@@ -183,8 +183,16 @@ final class HomeMode {
 
     /** Asks the main process to switch (the settings screen calls this). */
     static void request(Context c, String mode) {
+        if (FIRE_TV) return;
         ModeJob.schedule(c, ModeJob.APPLY, mode, 0);
     }
+
+    /**
+     * Amazon Fire TV (Fire OS): Amazon's home screen can't be replaced or turned off, so the switch never runs there.
+     * Home on Fire (github.com/toolicious/home-on-fire) sends the remote's Home button to Free My TV instead, and the
+     * app's icon opens the home screen (LaunchActivity).
+     */
+    static final boolean FIRE_TV = "Amazon".equalsIgnoreCase(android.os.Build.MANUFACTURER);
 
     /** Our home screen crashed 3 times in 5 minutes: give the home screen back to the TV's own (asked by :home). */
     static void requestRevertHome(Context c) {
@@ -193,12 +201,14 @@ final class HomeMode {
 
     /** After the TV boots (and after a TV update): wait for the system to settle and check Free My TV mode. */
     static void bootCheck(Context c) {
+        if (FIRE_TV) return;
         ensureRemoteService(c, 30_000);
         ModeJob.schedule(c, ModeJob.VERIFY, null, 45_000);
     }
 
     /** After an update of this app: complete Free My TV mode if anything is missing. */
     static void verify(Context c) {
+        if (FIRE_TV) return;
         ModeJob.schedule(c, ModeJob.VERIFY, null, 0);
     }
 

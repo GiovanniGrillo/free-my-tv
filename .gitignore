@@ -17,3 +17,6 @@ tools/.i18n-cache.json
 # publishing them.
 app/assets/fonts/Display.ttf
 app/assets/fonts/Text.ttf
+
+# Notes about your own TV (state before Free My TV, what was turned off)
+firetv/

@@ -384,7 +384,7 @@ public class SettingsActivity extends Activity {
         private void drawMain(Canvas c, float seconds) {
             boolean working = busy();
             String busyText = busyText();
-            String mode = freeActive() ? "Free My TV" : Ui.tr("Original");
+            String mode = HomeMode.FIRE_TV ? "Home on Fire" : freeActive() ? "Free My TV" : Ui.tr("Original");
             String[] labels = {Ui.tr("Home Screen"), Ui.tr("Screensaver"),
                     Ui.tr("Home Settings"), Ui.tr("Shelf"), Ui.tr("Top Buttons"),
                     Ui.tr("Remote Buttons"), Ui.tr("TV Settings")};
@@ -1072,7 +1072,7 @@ public class SettingsActivity extends Activity {
                 invalidate();
                 return;
             } else if (focus == 0) {
-                if (busy()) return;
+                if (busy() || HomeMode.FIRE_TV) return;   // Fire TV: the Home button comes through Home on Fire
                 screen = HOME_CHOICE;
                 focus = freeActive() ? 0 : 1;
             } else if (focus == 1) {

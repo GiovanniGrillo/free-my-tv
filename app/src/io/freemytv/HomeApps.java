@@ -82,7 +82,9 @@ final class HomeApps {
     private static final String[][] SHELF = {
         {"netflix", "Netflix", "com.netflix.ninja", "E50914", "", "1"},
         {"youtube", "YouTube", "com.google.android.youtube.tv", "FF0033", "play", "1"},
+        {"youtube", "YouTube", "com.amazon.firetv.youtube", "FF0033", "play", "1"},     // Fire TV's own build
         {"prime", "Prime Video", "com.amazon.amazonvideo.livingroom", "1A98FF", "tint", "0.96"},
+        {"prime", "Prime Video", "com.amazon.firebat", "1A98FF", "tint", "0.96"},       // built into Fire TV
         {"disney", "Disney+", "com.disney.disneyplus", "1838C8", "", "1"},
         {"max", "Max", "com.wbd.stream", "6C3BE0", "", "1.32"},
         {"max", "HBO Max", "com.hbo.hbonow", "6C3BE0", "", "1.32"},
@@ -97,7 +99,7 @@ final class HomeApps {
     static final int MAX_SHELF = 8;
     /** Live TV apps of some brands (the antenna's channels open through the standard Android request first). */
     static final String[] LIVE_TV_APPS = {"com.tcl.tv", "com.google.android.tv", "com.mediatek.wwtv.tvcenter", "com.sony.dtv.tvx",
-            "com.smartdevice.livetv", "com.mediatek.tv.oneworld.tvcenter"};
+            "com.smartdevice.livetv", "com.mediatek.tv.oneworld.tvcenter", "com.amazon.tv.livetv"};
     /** Kept out of "All Apps" (only hidden, still installed). Add the ones your TV shows that you never use. */
     private static final Set<String> HIDDEN = new HashSet<>(java.util.Arrays.asList(
             "com.google.android.play.games",        // Google Play Games
@@ -111,6 +113,9 @@ final class HomeApps {
             "com.homwee.chtvmanager",               // Philco: TV Manager (cleaner)
             "com.homwee.multiscreenshare",          // Philco: Midiacast (Chromecast still works)
             "com.xiaomi.mitv.manualhelp",           // Xiaomi: user manual
+            "com.mediatek.opapp",                   // Fire TV (MediaTek): satellite operators' portals
+            "com.vewd.core.tvapp", "com.vewd.core.opapp", "com.vewd.core.fvpplayer",   // Fire TV: HbbTV and Freeview players
+            "com.amazon.tv.earlyaccess",            // Fire TV: early access stub
             "com.Smartdevice.emanual",              // Skyworth: user manual
             "com.google.android.videos",            // Google Play Movies (discontinued)
             "com.disney.starplus",                  // Star+ (merged into Disney+)

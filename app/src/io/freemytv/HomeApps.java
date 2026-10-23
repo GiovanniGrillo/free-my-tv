@@ -55,6 +55,18 @@ final class HomeApps {
     private HomeApps() {}
 
     static final int APP = 0, LIVE_TV = 1, INPUT = 2, ALL_APPS = 3, SETTINGS = 4, ANDROID_SETTINGS = 5;
+
+    /**
+     * The TV's own settings. On Fire TV, Android's settings request goes through Amazon's home screen, which Home on
+     * Fire sends straight back to Free My TV: there it's the settings screen itself, inside Amazon's launcher.
+     */
+    static Intent tvSettings() {
+        if (HomeMode.FIRE_TV) {
+            return new Intent(Intent.ACTION_MAIN).addCategory("android.intent.category.LEANBACK_SETTINGS")
+                    .setComponent(new ComponentName("com.amazon.tv.launcher", "com.amazon.tv.launcher.ui.MainSettingsActivity"));
+        }
+        return new Intent(Settings.ACTION_SETTINGS);
+    }
     /** The "HDMI Inputs" button: opens the bottom drawer on the inputs (the home screen handles it). */
     static final int INPUTS = 7;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
@@ -430,7 +442,7 @@ final class HomeApps {
                 intent = new Intent().setComponent(new ComponentName(a, SettingsActivity.class));
                 break;
             case ANDROID_SETTINGS:
-                intent = new Intent(Settings.ACTION_SETTINGS);
+                intent = tvSettings();
                 break;
             default:
                 return false;

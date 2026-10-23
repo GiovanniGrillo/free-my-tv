@@ -440,6 +440,7 @@ final class HomeApps {
                 intent = liveTv(a);
                 break;
             case INPUT:
+                if (HomeMode.FIRE_TV && fireInput(a, it.inputId, it.label)) return true;
                 intent = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(it.inputId));
                 break;
             case SETTINGS:
@@ -467,6 +468,29 @@ final class HomeApps {
                 return false;
             }
         }
+    }
+
+    /**
+     * Fire TV: an HDMI input. The input's address goes to Vewd's HbbTV player or to Amazon's Live TV, which both play
+     * the last channel (RaiPlay's) instead, and Amazon's input player wants a permission only Amazon's apps have. Some
+     * models have Amazon's input switch service (it takes the port's hardware number: HW2 is HDMI 1); the others get
+     * the input in the app's own player (HdmiActivity).
+     */
+    private static boolean fireInput(Context c, String inputId, String label) {
+        Matcher m = Pattern.compile("/HW(\\d+)$").matcher(inputId);
+        Intent sw = new Intent().setComponent(new ComponentName("com.amazon.tv.inputpreference.service",
+                "com.amazon.tv.inputpreference.service.KaminoInputSwitchService"));
+        if (m.find() && c.getPackageManager().resolveService(sw, 0) != null) {
+            try {
+                if (c.startService(sw.putExtra("inputType", Integer.parseInt(m.group(1)))) != null) return true;
+            } catch (RuntimeException e) {
+                AppLog.w("Amazon's input switch: " + e.getMessage());
+            }
+        }
+        c.startActivity(new Intent(c, HdmiActivity.class).putExtra(HdmiActivity.EXTRA_INPUT, inputId)
+                .putExtra(HdmiActivity.EXTRA_LABEL, label)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        return true;
     }
 
     /**

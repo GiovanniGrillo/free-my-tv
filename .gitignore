@@ -20,3 +20,6 @@ app/assets/fonts/Text.ttf
 
 # Notes about your own TV (state before Free My TV, what was turned off)
 firetv/
+# Your own photos and reference pictures, never published
+pic/
+montagna.jpg

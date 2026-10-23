@@ -29,6 +29,8 @@ final class Look {
     static final float MILK = 0.5f;
     /** How solid the focused button, tab and drawer item are: 1 opaque, lower lets the glass show through. */
     static final float FOCUS = 0.7f;
+    /** Your photos (Photos) also as the home screen's background; false: only the screensaver shows them. */
+    static final boolean PHOTO_HOME = false;
     /** Liquid Glass (Android 13+): how much the rim bends the image behind it, and its highlight. */
     static final float REFRACT = 1.8f, SHINE = 1.6f;
 

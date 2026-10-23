@@ -48,6 +48,23 @@ final class Photos {
         return c.getExternalFilesDir("photos");
     }
 
+    /** Where PhotoInbox puts what adb writes when it can't reach the external folder (Fire OS). */
+    static File privateInbox(Context c) {
+        return new File(c.getFilesDir(), "inbox");
+    }
+
+    /** What's waiting in both inboxes, in name order (a name starting with "." is still being written). */
+    private static File[] waiting(Context c) {
+        List<File> out = new ArrayList<>();
+        for (File in : new File[] {inbox(c), privateInbox(c)}) {
+            File[] all = in == null ? null : in.listFiles();
+            if (all != null) for (File f : all) if (!f.getName().startsWith(".")) out.add(f);
+        }
+        File[] sorted = out.toArray(new File[0]);
+        Arrays.sort(sorted, (a, b) -> a.getName().compareTo(b.getName()));
+        return sorted;
+    }
+
     // MARK: - The imported photos
 
     private static long listedStamp = -1;
@@ -164,10 +181,8 @@ final class Photos {
     }
 
     private static int importNow(Context c) {
-        File in = inbox(c);
-        File[] all = in == null ? null : in.listFiles();
-        if (all == null || all.length == 0) return 0;
-        Arrays.sort(all);
+        File[] all = waiting(c);
+        if (all.length == 0) return 0;
         File d = dir(c);
         if (!d.isDirectory() && !d.mkdirs()) {
             AppLog.w("photos: can't create " + d);
@@ -211,9 +226,7 @@ final class Photos {
     /** Deletes the imported photos (and whatever is still waiting to be imported). */
     static void removeAll(Context c) {
         clear(dir(c));
-        File in = inbox(c);
-        File[] queued = in == null ? null : in.listFiles();
-        if (queued != null) for (File f : queued) f.delete();
+        for (File f : waiting(c)) f.delete();
         synchronized (Photos.class) {
             backdrop = null;
             built = null;

@@ -1320,7 +1320,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         HomeApps.Item it = shelf.get(i);
         // Lifted to be moved: a little bigger than focused, with a deeper shadow.
         float l = i == liftIndex ? Math.max(0, moveLift.value) : 0;
-        float f = tileFocus[i].value, fc = Ui.clamp(f), s = 1 + FOCUS_GROW * f + LIFT_GROW * l;
+        // Not below its resting size: the spring overshoots 0 on the way back, and the logo then hops between its
+        // rounded resting position and a fractional one (a flicker on the tile that just lost the focus).
+        float f = Math.max(0, tileFocus[i].value), fc = Ui.clamp(f), s = 1 + FOCUS_GROW * f + LIFT_GROW * l;
         RectF base = tileRects[i];
         float bw = base.width(), bh = base.height(), r0 = TILE_RADIUS * k;
         float cx = base.centerX(), cy = base.centerY();
@@ -2798,7 +2800,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         for (Recs.Pick p : recs.wanted()) recs.backdrop(p);   // all three tabs preloaded: switching tabs is instant
         // Picks bring their own background; without them (no TMDB key), your photo if there is one.
-        boolean own = !picksOn() && Photos.on(getContext());
+        boolean own = Look.PHOTO_HOME && !picksOn() && Photos.on(getContext());
         Backdrop b = own ? Photos.backdrop(getContext(), ownReady) : cards.isEmpty() ? null : recs.backdrop(cards.get(0));
         if (b != null || (cards.isEmpty() && !own)) showBackdrop(b);
         heroDirty = true;

@@ -85,7 +85,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // "All Apps" sheet.
     private static final int COLUMNS = 5, VISIBLE_ROWS = 3;
     private static final float GRID_W = 300, GRID_H = 169, GRID_GAP = 40, GRID_ROW = 239, GRID_TOP = 196, GRID_RADIUS = 22;
-    private static final int SMOKE = 0xFF111113, INK = 0xFF1C1C1E, WHITE = 0xFFF5F5F7;
+    private static final int SMOKE = Look.SMOKE, INK = 0xFF1C1C1E, WHITE = 0xFFF5F5F7;
     private static final int UP_COLOR = 0xFF30D158, DOWN_COLOR = 0xFFFF453A;
     private static final long TOAST_MS = 6000, FADE_MS = 800;
     /** Blur radii of the shadow and shadowDeep paints (Shadows needs them to draw the same blur on older TVs). */
@@ -1177,7 +1177,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         shadow.setColor(tone(0x1F000000, 0x52000000));
         shadows.draw(c, tmp, radius, SHADOW_BLUR * k, shadow);
         // White glass by day; smoked glass at night.
-        scene.liquid(c, platterRect, radius, tone(0xFFFFFFFF, SMOKE), tone(0.42f, 0.12f), tone(0.03f, 0.08f),
+        scene.liquid(c, platterRect, radius, tone(Look.CLEAR, SMOKE), tone(0.42f, 0.12f), tone(0.03f, 0.08f),
                 tone(30, 34) * k, tone(22, 28) * k, tone(0.65f, 0.95f), 1);
     }
 
@@ -1341,14 +1341,32 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             tileFill.setShader(null);
             c.restore();
             drawLogo(c, it, cell, s, style[2]);
+            drawRing(c, cell, r, fc);
         } else if (it.logo != null) {
             tileFill.setShader(null);
             tileFill.setColor(0xFF161618);
             c.drawRoundRect(cell, r, r, tileFill);
             drawLogo(c, it, cell, s, 0);
+            drawRing(c, cell, r, fc);
         } else {
             if (it.tile != null) roundImage(c, it.tile, cell, r);
+            drawRing(c, cell, r, fc);
         }
+    }
+
+    /** Look.RING: a thin ring around the focused app, just outside its corners. */
+    private void drawRing(Canvas c, RectF cell, float r, float f) {
+        if (Look.RING == 0 || f <= 0.01f) return;
+        float gap = 7 * k;
+        tmp.set(cell.left - gap, cell.top - gap, cell.right + gap, cell.bottom + gap);
+        ring.setStrokeWidth(3 * k);
+        ring.setColor(Ui.alpha(Look.RING, f));
+        c.drawRoundRect(tmp, r + gap, r + gap, ring);
+    }
+
+    private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+    {
+        ring.setStyle(Paint.Style.STROKE);
     }
 
     /**
@@ -1514,9 +1532,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             tmp.offset(0, drop);
             shadow.setColor(Ui.alpha(shadowColor, 1 - dk));
             shadows.draw(c, tmp, radius, SHADOW_BLUR * k, shadow);
-            scene.glass(c, r, radius, 0xFFFFFFFF, lightTint, 0, 0, 0.02f, 1, 1 - dk);
+            scene.glass(c, r, radius, Look.CLEAR, Look.panel(lightTint), 0, 0, 0.02f, 1, 1 - dk);
         }
-        if (dk > 0.001f) scene.glass(c, r, radius, SMOKE, 0.4f, 0, 0, 0.02f, 1, dk);
+        if (dk > 0.001f) scene.glass(c, r, radius, SMOKE, Look.panel(0.4f), 0, 0, 0.02f, 1, dk);
     }
 
     private void drawerCard(Canvas c, RectF r) {
@@ -1562,8 +1580,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (f < 0.99f) drawerGlass(c, cell, r, 0.7f, 0x14000000, 6 * k);
         if (f > 0.01f) {
             fill.setShader(null);
-            fill.setColor(Ui.alpha(WHITE, f));
+            fill.setColor(Ui.alpha(Look.ACCENT, f * Look.FOCUS));
             c.drawRoundRect(cell, r, r, fill);
+            drawRing(c, cell, r, f);
         }
         boolean off = it.kind == HomeApps.INPUT && !it.connected;
         int ink = blend(tone(off ? 0xFF8E8E93 : L_INK, off ? 0x6BFFFFFF : 0xF2FFFFFF), INK, f);
@@ -2784,8 +2803,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // Drawer open: the background lightens (by day) or darkens (at night), as a filter on the drawing itself.
         android.graphics.ColorFilter v = veil(tone(0.32f, 0.42f) * Ui.clamp(drawer.value), blend(0xFFFFFFFF, 0xFF000000, night));
         if (bgTo == null || (fading && bgFrom == null)) {
-            if (lightGradient == null) lightGradient = Ui.gradient(h, 0xFFF5F5F7, 0xFFE2E2E7);
-            if (nightGradient == null) nightGradient = Ui.gradient(h, 0xFF1C1C1E, 0xFF0B0B0D);
+            if (lightGradient == null) lightGradient = Ui.gradient(h, Look.DAY_TOP, Look.DAY_BOTTOM);
+            if (nightGradient == null) nightGradient = Ui.gradient(h, Look.NIGHT_TOP, Look.NIGHT_BOTTOM);
             fill.setColorFilter(v);
             fill.setColor(0xFF000000);
             if (night < 0.999f) {
@@ -2838,7 +2857,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     shadows.draw(c, tmp, rr, SHADOW_BLUR * k, shadow);
                 }
                 fill.setShader(null);
-                fill.setColor(Ui.alpha(0xFFFFFFFF, focus));
+                fill.setColor(Ui.alpha(Look.ACCENT, focus * Look.FOCUS));
                 c.drawRoundRect(cell, rr, rr, fill);
             }
             Paint p = i == tab ? lTabOn : lTab;
@@ -2958,12 +2977,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             tmp.offset(0, (6 + 8 * f) * k);
             shadow.setColor(Ui.alpha(0xFF000000, tone(0.1f, 0.3f) + tone(0.14f, 0.2f) * f));
             shadows.draw(c, tmp, rad, SHADOW_BLUR * k, shadow);
-            scene.liquid(c, cell, rad, tone(0xFFFFFFFF, SMOKE), tone(0.55f, 0.5f), tone(0.02f, 0.01f), 12 * k, 8 * k,
+            scene.liquid(c, cell, rad, tone(Look.CLEAR, SMOKE), tone(0.55f, 0.5f), tone(0.02f, 0.01f), 12 * k, 8 * k,
                     tone(0.6f, 0.45f), 1 - f);
             if (f > 0.01f) {
                 fill.setShader(null);
-                fill.setColor(Ui.alpha(0xFFFFFFFF, f));
+                fill.setColor(Ui.alpha(Look.ACCENT, f * Look.FOCUS));
                 c.drawCircle(cell.centerX(), cell.centerY(), rad, fill);
+                drawRing(c, cell, rad, f);
             }
             Symbols.draw(getContext(), c, it.symbol, cell.centerX(), cell.centerY(), 27 * k * s,
                     blend(tone(L_INK, 0xEBFFFFFF), L_INK, f));

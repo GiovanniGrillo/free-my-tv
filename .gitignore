@@ -13,3 +13,7 @@ __pycache__/
 # macOS
 .DS_Store
 tools/.i18n-cache.json
+# Your own fonts (Ui: Display.ttf for the clock and titles, Text.ttf for the rest): their licenses may not allow
+# publishing them.
+app/assets/fonts/Display.ttf
+app/assets/fonts/Text.ttf

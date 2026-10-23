@@ -44,7 +44,8 @@ final class HomeData {
         return CURRENCY.equals("USD") || inDollars ? "USDT" : CURRENCY;
     }
     private static final String WEATHER_QUERY = "&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset"
-            + "&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=2";
+            + "&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=2"
+            + (Config.WEATHER_MODEL.trim().isEmpty() ? "" : "&models=" + Config.WEATHER_MODEL.trim());
 
     private static String weatherPlace() {
         return Prefs.latitude() + "," + Prefs.longitude();

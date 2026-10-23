@@ -165,6 +165,9 @@ final class Scene {
     void liquid(Canvas c, RectF r, float radius, int tint, float tintAlpha, float lift, float band, float refraction,
                 float specular, float alpha) {
         if (alpha <= 0.004f) return;
+        tintAlpha = Look.tint(tintAlpha);
+        refraction *= Look.REFRACT;
+        specular *= Look.SHINE;
         if (liquid == null) {
             glass(c, r, radius, tint, Math.max(0.5f, tintAlpha), 0, 0, lift, 1, alpha);
             return;

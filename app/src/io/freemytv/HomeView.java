@@ -98,7 +98,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final float L_TITLE_BASE = 130, L_TABBAR_TOP = 158, L_TABBAR_H = 68, L_CARDS_TOP = 262, L_CARD_H = 442;
     private static final float L_TALL_W = 320, L_CARD_GAP = 40, L_BUTTON = 68, L_BUTTON_GAP = 20, L_BUTTON_CY = 103;
     private static final float L_PLATTER_TOP = 814, L_TILE_H = 126;
-    private static final float L_DATE_BASE = 330, L_CLOCK_BASE = 540, L_WEATHER_BASE = 626, L_QUOTES_BASE = 694;
+    private static final float L_DATE_BASE = 318, L_CLOCK_BASE = 548, L_WEATHER_BASE = 642, L_QUOTES_BASE = 712;
     private static final int L_INK = 0xFF1D1D1F, L_DIM = 0xFF6E6E73, L_FAINT = 0xFF8E8E93;
     private static String[] tabs;
     private static int tabsGeneration = -1;
@@ -413,6 +413,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     void resume() {
         if (running) return;
         running = true;
+        if (LongBack.ON) LongBack.ensureService(getContext());
+        // Back after a while (the TV was off): the look is automatic again.
+        if (pausedAt != 0 && SystemClock.uptimeMillis() - pausedAt > 30 * 60_000L) lookOverride = -1;
         checkNight(false);
         long now = SystemClock.uptimeMillis();
         // Some remotes (Xiaomi's) send one Home press as a burst of 5 to 8, and each one pauses and resumes the home
@@ -444,6 +447,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     void pause() {
         if (!running) return;
         running = false;
+        pausedAt = SystemClock.uptimeMillis();
         cancelReorder(true);
         handler.removeCallbacks(holdStart);
         okHeld = holdArmed = false;
@@ -608,10 +612,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lQuote = Ui.numbers(Ui.regular, 21 * k, L_FAINT);
         lTip = Ui.text(Ui.semibold, 25 * k, L_INK);
         lTip.setTextAlign(Paint.Align.CENTER);
-        lDate = Ui.text(Ui.semibold, 34 * k, L_DIM);
-        lClock = Ui.numbers(Ui.light, 200 * k, L_INK);
+        lDate = Ui.text(Ui.semibold, 40 * k, L_DIM);
+        lClock = Ui.numbers(Ui.light, 220 * k, L_INK);
         lClock.setLetterSpacing(-0.01f);
-        lWeather = Ui.text(Ui.medium, 34 * k, L_DIM);
+        lWeather = Ui.text(Ui.medium, 40 * k, L_DIM);
         lClockQuote = Ui.numbers(Ui.medium, 28 * k, L_DIM);
         lightGradient = null;
         buttonPaint = Ui.text(Ui.semibold, 29 * k, INK);
@@ -897,8 +901,23 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // MARK: - Night look
 
     /** Day or night right now (from the sun at your location); `animate`: with the transition. */
+    /** The day/night button: -1 automatic, 0 day, 1 night; lookAuto is what automatic said when it was pressed. */
+    private int lookOverride = -1;
+    private boolean lookAuto;
+    private long pausedAt;
+
+    private void toggleLook() {
+        lookAuto = data.isNight(System.currentTimeMillis());
+        lookOverride = nightTarget ? 0 : 1;
+        checkNight(true);
+        invalidateAll();
+    }
+
     private void checkNight(boolean animate) {
-        boolean want = data.isNight(System.currentTimeMillis());
+        boolean auto = data.isNight(System.currentTimeMillis());
+        // The day/night button wins until the automatic look changes by itself (the next sunrise or sunset).
+        if (lookOverride >= 0 && auto != lookAuto) lookOverride = -1;
+        boolean want = lookOverride >= 0 ? lookOverride == 1 : auto;
         if (want == nightTarget) return;
         nightTarget = want;
         if (animate && running) {
@@ -2262,6 +2281,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             openSheet();
             return;
         }
+        if (it.kind == HomeApps.LOOK) {
+            toggleLook();
+            return;
+        }
         if (it.kind == HomeApps.INPUTS) {
             openDrawer();
             for (int i = 0; i < drawerItems.size(); i++) {
@@ -2885,10 +2908,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             weatherLineAt = data.weatherAt;
             weatherLinePrefs = Prefs.version;
             weatherLineLanguage = Ui.language;
-            weatherLine = HomeData.degrees(wx.temp) + "  " + HomeData.condition(wx.code, wx.isDay) + "   "
-                    + HomeData.highLow(wx, "  ");
+            String city = Prefs.city();
+            weatherLine = (city.isEmpty() ? "" : city + "   ") + HomeData.degrees(wx.temp) + "  "
+                    + HomeData.condition(wx.code, wx.isDay) + "   " + HomeData.highLow(wx, "  ");
         }
-        float size = 40 * k, base = L_WEATHER_BASE * k;
+        float size = 46 * k, base = L_WEATHER_BASE * k;
         String symbol = Symbols.weather(wx.code, wx.isDay);
         float sw = Symbols.width(getContext(), symbol, size);
         Symbols.draw(getContext(), c, symbol, x + sw / 2, base - Ui.halfCap(lWeather), size, lWeather.getColor());
@@ -2985,10 +3009,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 c.drawCircle(cell.centerX(), cell.centerY(), rad, fill);
                 drawRing(c, cell, rad, f);
             }
-            Symbols.draw(getContext(), c, it.symbol, cell.centerX(), cell.centerY(), 27 * k * s,
+            // The day/night button shows what pressing it brings: the sun at night, the moon by day.
+            String symbol = it.kind == HomeApps.LOOK ? (nightTarget ? "sunny" : "bedtime") : it.symbol;
+            Symbols.draw(getContext(), c, symbol, cell.centerX(), cell.centerY(), 27 * k * s,
                     blend(tone(L_INK, 0xEBFFFFFF), L_INK, f));
             if (f > 0.01f) {
-                String label = it.label;
+                String label = it.kind == HomeApps.LOOK ? (nightTarget ? Ui.tr("Day look") : Ui.tr("Night look")) : it.label;
                 float half = lTip.measureText(label) / 2;
                 float x = Math.min(r.centerX(), CONTENT_R * k - half);
                 lTip.setAlpha(Math.round(255 * f));

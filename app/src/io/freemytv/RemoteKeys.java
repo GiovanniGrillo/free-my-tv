@@ -36,7 +36,7 @@ final class RemoteKeys {
         return TCL || STEM_NETFLIX || KTC || SONY;
     }
 
-    private static boolean is(String maker) {
+    static boolean is(String maker) {
         return maker.equalsIgnoreCase(Build.MANUFACTURER) || maker.equalsIgnoreCase(Build.BRAND);
     }
 

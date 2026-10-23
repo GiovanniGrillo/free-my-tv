@@ -69,6 +69,8 @@ final class HomeApps {
     }
     /** The "HDMI Inputs" button: opens the bottom drawer on the inputs (the home screen handles it). */
     static final int INPUTS = 7;
+    /** The day/night top button: switches the home screen's look (the home screen handles it). */
+    static final int LOOK = 8;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     static final int TILE_W = 384, TILE_H = 216;
 
@@ -204,8 +206,9 @@ final class HomeApps {
 
     // MARK: - Top buttons (the round ones at the top right)
 
-    static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_SETTINGS = "settings";
-    static final List<String> TOP_DEFAULT = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS, TOP_SETTINGS));
+    static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_LOOK = "look", TOP_SETTINGS = "settings";
+    static final List<String> TOP_DEFAULT = Collections.unmodifiableList(
+            java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS, TOP_LOOK, TOP_SETTINGS));
     static final int MAX_TOP = TOP_DEFAULT.size();
 
     /** The keys of the top buttons, in order (Settings > Top Buttons; by default Live TV, HDMI Inputs, Settings). */
@@ -228,6 +231,7 @@ final class HomeApps {
         switch (key) {
             case TOP_LIVE: return action(LIVE_TV, TOP_LIVE, Ui.tr("light|Live TV"), "live_tv");
             case TOP_INPUTS: return action(INPUTS, TOP_INPUTS, Ui.tr("HDMI Inputs"), "hdmi");
+            case TOP_LOOK: return action(LOOK, TOP_LOOK, Ui.tr("Day or night"), "bedtime");
             default: return action(SETTINGS, TOP_SETTINGS, Ui.tr("light|Settings"), "settings");
         }
     }
@@ -471,6 +475,12 @@ final class HomeApps {
      */
     static Intent liveTv(Context c) {
         PackageManager pm = c.getPackageManager();
+        // Fire TV: Amazon's Live TV, on its last channel. The channels request would also offer Vewd's HbbTV app.
+        if (HomeMode.FIRE_TV) {
+            Intent amazon = new Intent().setComponent(new ComponentName("com.amazon.tv.livetv",
+                    "com.amazon.tv.livetv.TvChannelsPlayerActivityAlias"));
+            if (amazon.resolveActivity(pm) != null) return amazon;
+        }
         // MediaTek OneWorld TV Center (KTC/NextStar) has one input per tuner mode (antenna, cable, satellite): tuning one
         // switches the TV to that mode and hides the other channel lists, so it opens as it is, on its own last channel.
         Intent oneWorld = launchIntent(pm, "com.mediatek.tv.oneworld.tvcenter");

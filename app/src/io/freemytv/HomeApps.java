@@ -475,11 +475,13 @@ final class HomeApps {
      */
     static Intent liveTv(Context c) {
         PackageManager pm = c.getPackageManager();
-        // Fire TV: Amazon's Live TV, on its last channel. The channels request would also offer Vewd's HbbTV app.
+        // Fire TV: Amazon's "Live TV" for the antenna (digital terrestrial). Its DTT entry plays the antenna's channels,
+        // or opens the channel scan when there are none yet; the channels request would also offer Vewd's player, and
+        // the Live TV app on its own plays the last channel, which can be an app's (RaiPlay's).
         if (HomeMode.FIRE_TV) {
-            Intent amazon = new Intent().setComponent(new ComponentName("com.amazon.tv.livetv",
-                    "com.amazon.tv.livetv.TvChannelsPlayerActivityAlias"));
-            if (amazon.resolveActivity(pm) != null) return amazon;
+            Intent antenna = new Intent().setComponent(new ComponentName("com.amazon.tv.livetv",
+                    "com.amazon.tv.livetv.DttIconWrapperActivity"));
+            if (antenna.resolveActivity(pm) != null) return antenna;
         }
         // MediaTek OneWorld TV Center (KTC/NextStar) has one input per tuner mode (antenna, cable, satellite): tuning one
         // switches the TV to that mode and hides the other channel lists, so it opens as it is, on its own last channel.

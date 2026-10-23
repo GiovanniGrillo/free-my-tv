@@ -920,7 +920,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean want = lookOverride >= 0 ? lookOverride == 1 : auto;
         if (want == nightTarget) return;
         nightTarget = want;
-        if (animate && running) {
+        // Android 8 to 11 (no GPU layers): the 2 s fade redraws every layer on every frame and stutters there, so the
+        // new look comes in one redraw.
+        if (animate && running && !Ui.LEGACY) {
             nightFrom = night;
             nightAt = SystemClock.uptimeMillis();
         } else {

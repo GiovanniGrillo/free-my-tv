@@ -166,6 +166,7 @@ public class SettingsActivity extends Activity {
                     if (newest != null) announceForAccessibility(newest.optString("text"));
                 }
                 wasBusy = nowBusy;
+                if (HomeMode.FIRE_TV) refreshTvInfo();
                 invalidate();
                 handler.postDelayed(this, busy() ? 500 : 2000);
             }
@@ -484,6 +485,19 @@ public class SettingsActivity extends Activity {
 
         private float drawComparison(Canvas c, float y) {
             float x = LIST_X * k + 30 * k, colA = LIST_R * k - 220 * k, colB = LIST_R * k - 30 * k;
+            if (HomeMode.FIRE_TV) {
+                // No switch on Fire TV, so nothing measures the comparison: this TV's own numbers instead.
+                c.drawText(Ui.tr("THIS TV"), x, y, header);
+                cellValue.setColor(0xD9FFFFFF);
+                String[] labels = {Ui.tr("Free memory"), Ui.tr("Free My TV's memory"), Ui.tr("Free storage")};
+                String[] values = tvInfo;
+                for (int i = 0; i < labels.length; i++) {
+                    float base = y + (46 + 40 * i) * k;
+                    c.drawText(labels[i], x, base, cellLabel);
+                    c.drawText(values[i], colB, base, cellValue);
+                }
+                return y + (46 + 40 * labels.length) * k;
+            }
             c.drawText(Ui.tr("COMPARISON"), x, y, header);
             cellValue.setColor(0x73FFFFFF);
             c.drawText(Ui.tr("Original"), colA, y, cellValue);
@@ -548,6 +562,53 @@ public class SettingsActivity extends Activity {
             int ba = b >>> 24, br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
             return (Math.round(aa + (ba - aa) * f) << 24) | (Math.round(ar + (br - ar) * f) << 16)
                     | (Math.round(ag + (bg - ag) * f) << 8) | Math.round(ab + (bb - ab) * f);
+        }
+
+        // MARK: - This TV (Fire TV)
+
+        private volatile String[] tvInfo = {"—", "—", "—"};
+        private long tvInfoAt;
+
+        /** Reads this TV's memory and storage in the background, at most every 5 s (the poll asks). */
+        private void refreshTvInfo() {
+            long now = SystemClock.uptimeMillis();
+            if (tvInfoAt != 0 && now - tvInfoAt < 5000) return;
+            tvInfoAt = now;
+            Context c = getContext().getApplicationContext();
+            new Thread(() -> {
+                tvInfo = readTvInfo(c);
+                handler.post(this::invalidate);
+            }).start();
+        }
+
+        private static String[] readTvInfo(Context c) {
+            String[] out = {"—", "—", "—"};
+            try {
+                android.app.ActivityManager am = (android.app.ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
+                android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                out[0] = Ui.trf("{free} of {total}", "free", bytes(mi.availMem), "total", bytes(mi.totalMem));
+                // This app's own processes (home, keys, the main one): the only ones Android lists for it.
+                List<android.app.ActivityManager.RunningAppProcessInfo> procs = am.getRunningAppProcesses();
+                if (procs != null && !procs.isEmpty()) {
+                    int[] pids = new int[procs.size()];
+                    for (int i = 0; i < pids.length; i++) pids[i] = procs.get(i).pid;
+                    long pss = 0;
+                    for (android.os.Debug.MemoryInfo m : am.getProcessMemoryInfo(pids)) pss += m.getTotalPss();
+                    out[1] = bytes(pss * 1024);
+                }
+                android.os.StatFs fs = new android.os.StatFs(android.os.Environment.getDataDirectory().getPath());
+                out[2] = Ui.trf("{free} of {total}", "free", bytes(fs.getAvailableBytes()), "total", bytes(fs.getTotalBytes()));
+            } catch (RuntimeException e) {
+                AppLog.w("this TV's numbers: " + e.getMessage());
+            }
+            return out;
+        }
+
+        private static String bytes(long b) {
+            double mb = b / (1024.0 * 1024.0);
+            if (mb < 1024) return Ui.trf("{n} MB", "n", Math.round(mb));
+            return Ui.trf("{n} GB", "n", String.format(Ui.locale(), "%.1f", mb / 1024));
         }
 
         private static String metric(JSONObject m, String key) {

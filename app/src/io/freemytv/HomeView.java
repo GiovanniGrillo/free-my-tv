@@ -1430,12 +1430,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         Bitmap logo = crispLogo(it, mode == 2 && it.logoDark != null, rest);
         if (logo == null) return;
         float scale = rest ? s : s / (1 + FOCUS_GROW);
+        // Near its own size, drawn at it on whole pixels: the spring's long tail otherwise draws it a hair off its
+        // size (filtered, so a pixel softer) and it turned sharp only once settled, a visible hop a moment after the
+        // tile that lost the focus stopped shrinking.
+        if (Math.abs(scale - 1) < 0.015f) scale = 1;
         float dw = logo.getWidth() * scale, dh = logo.getHeight() * scale;
-        float left = box.centerX() - dw / 2, top = box.centerY() - dh / 2;
-        if (rest ? Math.abs(scale - 1) < 0.002f : scale > 0.998f) {
-            left = Math.round(left);
-            top = Math.round(top);
-        }
+        float left = Math.round(box.centerX() - dw / 2), top = Math.round(box.centerY() - dh / 2);
         tmp.set(left, top, left + dw, top + dh);
         bitmapPaint.setColorFilter(mode == 1 ? whiteLogo : null);
         c.drawBitmap(logo, null, tmp, bitmapPaint);

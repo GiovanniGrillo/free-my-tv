@@ -155,13 +155,17 @@ final class PhotoPage {
                 int got = in.read(buf, 0, Math.min(buf.length, left));
                 if (got < 0 || System.nanoTime() > deadline) throw new IOException("cut short");
                 if (first < 0) first = (buf[0] & 0xFF) << 8 | (got > 1 ? buf[1] & 0xFF : 0);
-                if (first != 0xFFD8) throw new IOException("not a JPEG");   // the page sends JPEG only
+                if (first != 0xFFD8) break;   // the page sends JPEG only
                 os.write(buf, 0, got);
                 left -= got;
             }
-            whole = true;
+            whole = left == 0;
         } finally {
             if (!whole) part.delete();
+        }
+        if (!whole) {
+            respond(out, "415 Unsupported Media Type", "text/plain; charset=utf-8", new byte[0]);
+            return;
         }
         if (!part.renameTo(new File(inbox, name))) {
             part.delete();
@@ -212,18 +216,25 @@ final class PhotoPage {
         StringBuilder b = new StringBuilder(6144).append("<!doctype html><html lang=\"").append(esc(Ui.language))
                 .append("\"><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">")
                 .append("<title>Free My TV</title><style>")
-                .append("body{margin:0 auto;max-width:34em;padding:24px;font:17px/1.5 system-ui,-apple-system,sans-serif;")
-                .append("background:#1c1c1e;color:#f5f5f7}h1{font-size:24px}")
-                .append("label,button{display:block;box-sizing:border-box;width:100%;margin:14px 0;padding:16px;border:0;")
-                .append("border-radius:12px;font:600 17px system-ui,sans-serif;text-align:center}")
-                .append("label{background:#3a3a3c;color:#f5f5f7}button{background:#f5f5f7;color:#1c1c1e}")
-                .append("button:disabled{opacity:.4}input{display:none}.s{color:#98989d;font-size:15px}")
-                .append("#st{font-size:19px;min-height:1.5em}.ok{color:#7ee08a}.no{color:#ffc266}</style>")
-                .append("<h1>").append(esc(Ui.tr("My Photos"))).append(" · Free My TV</h1>")
+                .append("*{box-sizing:border-box}body{margin:0 auto;max-width:32em;padding:28px 20px 40px;")
+                .append("font:17px/1.45 system-ui,-apple-system,sans-serif;background:#141211;color:#f5f5f7}")
+                .append("h1{font-size:28px;margin:0 0 2px}.k{color:#98989d;font-size:15px;margin:0 0 22px}")
+                .append("label,button{display:block;width:100%;margin:12px 0;padding:17px;border:0;border-radius:16px;")
+                .append("font:600 18px system-ui,-apple-system,sans-serif;text-align:center}")
+                .append("label{background:#2c2a28;color:#f5f5f7}button{background:#f5f5f7;color:#1c1c1e}")
+                .append("button:disabled{opacity:.35}input{display:none}.s{color:#98989d;font-size:14px;margin-top:18px}")
+                .append("#g{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:14px 0}")
+                .append("#g div{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#2c2a28}")
+                .append("#g img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .3s}")
+                .append("#g .w img{opacity:.35}#g .d:after{content:'\\2713';position:absolute;right:6px;bottom:4px;")
+                .append("font:700 20px system-ui;color:#7ee08a;text-shadow:0 1px 3px #000}")
+                .append("#st{font-size:18px;min-height:1.4em;margin:6px 0}.ok{color:#7ee08a}.no{color:#ffc266}</style>")
+                .append("<h1>").append(esc(Ui.tr("Import photos"))).append("</h1><p class=k>Free My TV · ")
+                .append(esc(Ui.tr("My Photos"))).append("</p>")
                 .append("<label>").append(esc(Ui.tr("Choose photos")))
                 .append("<input type=file id=f accept=\"image/*\" multiple></label>")
                 .append("<button id=go disabled>").append(esc(Ui.tr("Send to the TV"))).append("</button>")
-                .append("<p id=st></p><p class=s>")
+                .append("<p id=st></p><div id=g></div><p class=s>")
                 .append(esc(Ui.tr("They go straight to the TV over this Wi-Fi, made smaller, without their location.")))
                 .append("</p><script>")
                 .append("var T={chosen:").append(js(Ui.tr("Chosen: {n}")))
@@ -244,7 +255,10 @@ final class PhotoPage {
             "var f=document.getElementById('f'),go=document.getElementById('go'),st=document.getElementById('st');"
             + "function pl(p,n){return p.replace('{n}',n)}"
             + "function say(t,c){st.textContent=t;st.className=c||''}"
-            + "f.onchange=function(){go.disabled=!f.files.length;say(f.files.length?pl(T.chosen,f.files.length):'')};"
+            + "var g=document.getElementById('g'),cells=[];"
+            + "f.onchange=function(){go.disabled=!f.files.length;say(f.files.length?pl(T.chosen,f.files.length):'');"
+            + "g.innerHTML='';cells=[].slice.call(f.files).map(function(x){var d=document.createElement('div'),i=new Image();"
+            + "i.src=URL.createObjectURL(x);d.appendChild(i);g.appendChild(d);return d})};"
             + "function load(file){if(window.createImageBitmap)return createImageBitmap(file,{imageOrientation:'from-image'})"
             + ".catch(function(){return img(file)});return img(file)}"
             + "function img(file){return new Promise(function(ok,no){var i=new Image();i.onload=function(){ok(i)};i.onerror=no;"
@@ -256,12 +270,13 @@ final class PhotoPage {
             + "go.onclick=function(){var list=[].slice.call(f.files),i=0,done=0,bad=0;go.disabled=true;"
             + "function next(){if(i>=list.length){say(bad?pl(T.failed,bad):pl(T.sent,done),bad?'no':'ok');go.disabled=false;"
             + "f.value='';return}"
-            + "say(T.sending.replace('{n}',i+1).replace('{total}',list.length));var file=list[i++];"
+            + "say(T.sending.replace('{n}',i+1).replace('{total}',list.length));var cell=cells[i]||{};cell.className='w';var file=list[i++];"
             + "shrink(file).then(function(b){return fetch(location.pathname+'/photo',{method:'POST',"
             + "headers:{'Content-Type':'image/jpeg'},body:b})}).then(function(r){"
             + "if(r.status==409){say(T.full,'no');go.disabled=false;throw 'stop'}"
             + "if(r.status==410||r.status==404){say(T.gone,'no');throw 'stop'}"
-            + "if(r.ok)done++;else bad++;next()}).catch(function(e){if(e==='stop')return;bad++;next()})}next()};";
+            + "if(r.ok){done++;cell.className='d'}else{bad++;cell.className=''}next()})"
+            + ".catch(function(e){if(e==='stop')return;bad++;cell.className='';next()})}next()};";
 
     private static String js(String s) {
         StringBuilder b = new StringBuilder(s.length() + 8).append('"');

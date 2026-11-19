@@ -107,7 +107,7 @@ public class PhotosActivity extends Activity {
         private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint imagePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Paint background = new Paint();
-        private final Paint title, count, optionLabel, optionValue, hint, badge, menuLabel, menuValue, empty, menuValueLeft, arrivedPaint;
+        private final Paint title, count, optionLabel, optionValue, hint, badge, menuLabel, menuValue, empty, arrivedPaint, urlPaint;
         private final RectF cell = new RectF(), rect = new RectF();
         private final Matrix matrix = new Matrix();
 
@@ -126,8 +126,8 @@ public class PhotosActivity extends Activity {
             menuValue = Ui.text(Ui.regular, 26 * k, 0xB3FFFFFF);
             menuValue.setTextAlign(Paint.Align.RIGHT);
             empty = Ui.text(Ui.regular, 30 * k, 0xB3FFFFFF);
-            menuValueLeft = Ui.text(Ui.regular, 30 * k, 0xE6FFFFFF);
             arrivedPaint = Ui.text(Ui.semibold, 32 * k, 0xFF7EE08A);
+            urlPaint = Ui.text(Ui.regular, 24 * k, 0xCCFFFFFF);
             empty.setTextAlign(Paint.Align.CENTER);
             ring.setStyle(Paint.Style.STROKE);
             reload();
@@ -463,7 +463,7 @@ public class PhotosActivity extends Activity {
                         });
                     }
                 });
-                qr = qrBitmap(Qr.encode(phone.url));
+                qr = qrBitmap(Qr.encode(phone.url), Math.round((680 - 2 * 80 - 40) * k));
                 // While the code shows, the TV's screensaver doesn't cover it.
                 activity.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             } catch (java.io.IOException | RuntimeException e) {
@@ -482,51 +482,104 @@ public class PhotosActivity extends Activity {
             activity.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
 
-        /** The QR code's modules as a bitmap, one pixel each, with the light margin readers need (4 modules). */
-        private static Bitmap qrBitmap(boolean[][] modules) {
-            int quiet = 4, n = modules.length + 2 * quiet;
-            int[] pixels = new int[n * n];
+        /**
+         * The QR code at its size on screen, each module a whole number of pixels (with the light margin readers need: 4
+         * modules), drawn 1:1: this TV's GPU smooths a scaled bitmap even without filtering, and the code came out blurred.
+         */
+        private static Bitmap qrBitmap(boolean[][] modules, int most) {
+            int quiet = 4, n = modules.length + 2 * quiet, px = Math.max(1, most / n), side = n * px;
+            int[] pixels = new int[side * side];
             java.util.Arrays.fill(pixels, 0xFFFFFFFF);
             for (int y = 0; y < modules.length; y++) {
-                for (int x = 0; x < modules.length; x++) if (modules[y][x]) pixels[(y + quiet) * n + x + quiet] = 0xFF000000;
+                for (int x = 0; x < modules.length; x++) {
+                    if (!modules[y][x]) continue;
+                    for (int dy = 0; dy < px; dy++) {
+                        java.util.Arrays.fill(pixels, ((y + quiet) * px + dy) * side + (x + quiet) * px,
+                                ((y + quiet) * px + dy) * side + (x + quiet + 1) * px, 0xFF000000);
+                    }
+                }
             }
-            return Bitmap.createBitmap(pixels, n, n, Bitmap.Config.ARGB_8888);
+            return Bitmap.createBitmap(pixels, side, side, Bitmap.Config.RGB_565);
+        }
+
+        /** The overlay's paragraphs, wrapped to their column (the overlay is still: drawn only when it changes). */
+        private android.text.TextPaint body, small;
+
+        private void drawWrapped(Canvas c, String text, android.text.TextPaint p, float x, float y, float width) {
+            android.text.StaticLayout l = android.text.StaticLayout.Builder.obtain(text, 0, text.length(), p, Math.round(width))
+                    .setLineSpacing(0, 1.25f).setIncludePad(false).build();
+            c.save();
+            c.translate(x, y);
+            l.draw(c);
+            c.restore();
+        }
+
+        private float wrappedHeight(String text, android.text.TextPaint p, float width) {
+            return android.text.StaticLayout.Builder.obtain(text, 0, text.length(), p, Math.round(width))
+                    .setLineSpacing(0, 1.25f).setIncludePad(false).build().getHeight();
         }
 
         private void drawPhone(Canvas c) {
-            fill.setColor(0xD9000000);
+            if (body == null) {
+                body = new android.text.TextPaint(Ui.text(Ui.regular, 30 * k, 0xE6FFFFFF));
+                small = new android.text.TextPaint(Ui.text(Ui.regular, 24 * k, 0x99FFFFFF));
+            }
+            fill.setColor(0xE6000000);
             c.drawRect(0, 0, getWidth(), getHeight(), fill);
-            float w = 1180 * k, h = 600 * k, x = (getWidth() - w) / 2f, y = 210 * k;
+            float w = 1400 * k, h = 680 * k, x = (getWidth() - w) / 2f, y = (getHeight() - h) / 2f - 20 * k;
             rect.set(x, y, x + w, y + h);
             fill.setColor(0xFF262321);
-            c.drawRoundRect(rect, 34 * k, 34 * k, fill);
-            if (phoneIntro) {
-                float tx = x + 70 * k;
-                c.drawText(Ui.tr("Import photos"), tx, y + 120 * k, title);
-                String[] lines = {
-                        Ui.tr("With OK, the TV opens a small private page on its Wi-Fi"),
-                        Ui.tr("and shows a code. Scan it with your phone's camera,"),
-                        Ui.tr("choose the photos and send them: they come straight here,"),
-                        Ui.tr("without the internet. The page closes when you leave this screen.")};
-                for (int i = 0; i < lines.length; i++) c.drawText(lines[i], tx, y + (220 + i * 56) * k, menuValueLeft);
-                c.drawText(Ui.tr("Your phone must be on the TV's Wi-Fi."), tx, y + 500 * k, hint);
+            c.drawRoundRect(rect, 40 * k, 40 * k, fill);
+            float pad = 80 * k;
+            if (phoneIntro || phone == null) {
+                float tx = x + pad, tw = w - 2 * pad, ty = y + pad + 50 * k;
+                c.drawText(Ui.tr("Import photos"), tx, ty, title);
+                if (phone == null && !phoneIntro) {
+                    drawWrapped(c, phoneError == null ? "" : phoneError, body, tx, ty + 50 * k, tw);
+                    return;
+                }
+                String text = Ui.tr("With OK, the TV opens a small private page on its Wi-Fi") + " "
+                        + Ui.tr("and shows a code. Scan it with your phone's camera,") + " "
+                        + Ui.tr("choose the photos and send them: they come straight here,") + " "
+                        + Ui.tr("without the internet. The page closes when you leave this screen.");
+                float py = ty + 56 * k;
+                drawWrapped(c, text, body, tx, py, tw);
+                py += wrappedHeight(text, body, tw) + 36 * k;
+                drawWrapped(c, Ui.tr("Your phone must be on the TV's Wi-Fi."), small, tx, py, tw);
+                // The OK that starts it, as a button
+                String ok = "OK";
+                float bw = optionValue.measureText(ok) + 96 * k;
+                rect.set(tx, y + h - pad - 76 * k, tx + bw, y + h - pad);
+                fill.setColor(0xFFF5F5F7);
+                c.drawRoundRect(rect, 22 * k, 22 * k, fill);
+                optionValue.setColor(INK);
+                c.drawText(ok, rect.left + 48 * k, rect.centerY() + Ui.halfCap(optionValue), optionValue);
                 return;
             }
-            if (phone == null) {
-                c.drawText(phoneError == null ? "" : phoneError, x + 60 * k, y + 120 * k, menuLabel);
-                return;
+            // The code on a white tile, each module a whole number of pixels: sharp, and every reader gets it.
+            float tile = h - 2 * pad;
+            rect.set(x + pad, y + pad, x + pad + tile, y + pad + tile);
+            fill.setColor(0xFFFFFFFF);
+            c.drawRoundRect(rect, 28 * k, 28 * k, fill);
+            if (qr != null) {
+                c.drawBitmap(qr, Math.round(rect.centerX() - qr.getWidth() / 2f), Math.round(rect.centerY() - qr.getHeight() / 2f), qrPaint);
             }
-            float side = 440 * k, qx = x + 60 * k, qy = y + 80 * k;
-            rect.set(qx, qy, qx + side, qy + side);
-            if (qr != null) c.drawBitmap(qr, null, rect, qrPaint);
-            float tx = qx + side + 60 * k;
-            c.drawText(Ui.tr("Import photos"), tx, y + 140 * k, title);
-            c.drawText(Ui.tr("Scan the code with your phone's camera,"), tx, y + 220 * k, menuValueLeft);
-            c.drawText(Ui.tr("choose the photos and send them."), tx, y + 262 * k, menuValueLeft);
-            c.drawText(Ui.tr("Your phone must be on the TV's Wi-Fi."), tx, y + 330 * k, hint);
-            c.drawText(phone.url, tx, y + 380 * k, hint);   // to type it, where the camera can't read the code
+            float tx = x + pad + tile + 70 * k, tw = x + w - pad - tx, ty = y + pad + 50 * k;
+            c.drawText(Ui.tr("Import photos"), tx, ty, title);
+            String text = Ui.tr("Scan the code with your phone's camera,") + " "
+                    + Ui.tr("choose the photos and send them.");
+            float py = ty + 56 * k;
+            drawWrapped(c, text, body, tx, py, tw);
+            py += wrappedHeight(text, body, tw) + 30 * k;
+            drawWrapped(c, Ui.tr("Your phone must be on the TV's Wi-Fi."), small, tx, py, tw);
+            py += wrappedHeight(Ui.tr("Your phone must be on the TV's Wi-Fi."), small, tw) + 18 * k;
+            // To type it where the camera can't read the code: on one line, smaller if it must.
+            urlPaint.setTextSize(24 * k);
+            float uw = urlPaint.measureText(phone.url);
+            if (uw > tw) urlPaint.setTextSize(24 * k * tw / uw);
+            c.drawText(phone.url, tx, py + 24 * k, urlPaint);
             if (arrived > 0) {
-                c.drawText(Ui.trf("Arrived: {n}", "n", arrived), tx, y + 440 * k, arrivedPaint);
+                c.drawText(Ui.trf("Arrived: {n}", "n", arrived), tx, y + h - pad, arrivedPaint);
             }
         }
 

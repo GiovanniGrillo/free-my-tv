@@ -99,7 +99,7 @@ public class PhotosActivity extends Activity {
         private Bitmap qr;
         private String phoneError;
         /** Import photos: first what will happen (OK starts it, Back doesn't). */
-        private boolean phoneIntro;
+        private boolean phoneIntro, introCancel;
         private int arrived;
         private final Paint qrPaint = new Paint();   // no filtering: the modules stay sharp
 
@@ -268,7 +268,9 @@ public class PhotosActivity extends Activity {
                     left + title.measureText(Ui.tr("My Photos")) + 28 * k, 118 * k, count);
             drawOptions(c, left);
             if (photos.isEmpty()) {
-                c.drawText(Ui.tr("No photos yet: send them from your phone with Import photos."), getWidth() / 2f, 620 * k, empty);
+                String none = Ui.tr("No photos yet: send them from your phone with Import photos.");
+                fit(empty, none, 30 * k, getWidth() - 2 * left);
+                c.drawText(none, getWidth() / 2f, 620 * k, empty);
             }
             File home = Photos.homePhoto(ctx());
             int first = scrollRow * COLS, last = Math.min(photos.size(), (scrollRow + VISIBLE_ROWS) * COLS);
@@ -276,7 +278,10 @@ public class PhotosActivity extends Activity {
             if (focus >= first && focus < last) drawPhoto(c, focus, home);
             if (menuOpen) drawMenu(c);
             if (phone != null || phoneError != null || phoneIntro) drawPhone(c);
-            c.drawText(hintText(), left, 1040 * k, hint);
+            String h = hintText();
+            fit(hint, h, 24 * k, getWidth() - 2 * left);
+            c.drawText(h, left, 1040 * k, hint);
+            hint.setTextSize(24 * k);
         }
 
         private float left() {
@@ -298,10 +303,20 @@ public class PhotosActivity extends Activity {
 
         private void drawOptions(Canvas c, float left) {
             String[] t = optionTexts();
-            float x = left, top = OPTIONS_Y * k, h = 92 * k;
+            // All in one row: in a longer language (or a wider font) the buttons and their text get smaller together.
+            optionLabel.setTextSize(21 * k);
+            optionValue.setTextSize(26 * k);
+            float natural = 0, gaps = (OPTIONS - 1) * 20 * k, room = getWidth() - 2 * left;
+            for (int i = 0; i < OPTIONS; i++) {
+                natural += Math.max(optionLabel.measureText(t[i * 2]), optionValue.measureText(t[i * 2 + 1])) + 64 * k;
+            }
+            float shrink = natural + gaps > room ? (room - gaps) / natural : 1;
+            optionLabel.setTextSize(21 * k * shrink);
+            optionValue.setTextSize(26 * k * shrink);
+            float x = left, top = OPTIONS_Y * k, h = 92 * k, inset = 32 * k * shrink;
             for (int i = 0; i < OPTIONS; i++) {
                 String label = t[i * 2], value = t[i * 2 + 1];
-                float w = Math.max(optionLabel.measureText(label), optionValue.measureText(value)) + 64 * k;
+                float w = Math.max(optionLabel.measureText(label), optionValue.measureText(value)) + 2 * inset;
                 rect.set(x, top, x + w, top + h);
                 boolean on = focus < 0 && option == i;
                 fill.setColor(on ? 0xFFF5F5F7 : 0x1FFFFFFF);
@@ -309,13 +324,15 @@ public class PhotosActivity extends Activity {
                 optionLabel.setColor(on ? 0x991C1C1E : 0x99FFFFFF);
                 optionValue.setColor(on ? INK : 0xF2FFFFFF);
                 if (label.isEmpty()) {
-                    c.drawText(value, x + 32 * k, rect.centerY() + Ui.halfCap(optionValue), optionValue);
+                    c.drawText(value, x + inset, rect.centerY() + Ui.halfCap(optionValue), optionValue);
                 } else {
-                    c.drawText(label, x + 32 * k, top + 36 * k, optionLabel);
-                    c.drawText(value, x + 32 * k, top + 72 * k, optionValue);
+                    c.drawText(label, x + inset, top + 36 * k, optionLabel);
+                    c.drawText(value, x + inset, top + 72 * k, optionValue);
                 }
                 x += w + 20 * k;
             }
+            optionLabel.setTextSize(21 * k);
+            optionValue.setTextSize(26 * k);
         }
 
         private void cellRect(int i, RectF out) {
@@ -392,7 +409,12 @@ public class PhotosActivity extends Activity {
             fill.setColor(0x99000000);
             c.drawRect(0, 0, getWidth(), getHeight(), fill);
             String[] t = menuTexts();
-            float w = 620 * k, rowH = 84 * k, pad = 18 * k;
+            // As wide as its longest row needs (label, a gap, value), within the screen
+            float widest = 0;
+            for (int i = 0; i < MENU; i++) {
+                widest = Math.max(widest, menuLabel.measureText(t[i * 2]) + (t[i * 2 + 1].isEmpty() ? 0 : 48 * k + menuValue.measureText(t[i * 2 + 1])));
+            }
+            float rowH = 84 * k, pad = 18 * k, w = Math.min(getWidth() - 160 * k, Math.max(620 * k, widest + 2 * pad + 56 * k));
             float x = (getWidth() - w) / 2f, y = (getHeight() - MENU * rowH - 2 * pad) / 2f;
             rect.set(x, y, x + w, y + MENU * rowH + 2 * pad);
             fill.setColor(0xF2262321);
@@ -408,7 +430,10 @@ public class PhotosActivity extends Activity {
                 menuLabel.setColor(on ? INK : i == M_REMOVE ? 0xFFFF8A80 : 0xF2FFFFFF);
                 menuValue.setColor(on ? 0xB31C1C1E : 0xB3FFFFFF);
                 float base = top + rowH / 2 + Ui.halfCap(menuLabel);
+                float valueW = t[i * 2 + 1].isEmpty() ? 0 : menuValue.measureText(t[i * 2 + 1]) + 48 * k;
+                fit(menuLabel, t[i * 2], 28 * k, w - 2 * pad - 56 * k - valueW);
                 c.drawText(t[i * 2], x + pad + 28 * k, base, menuLabel);
+                menuLabel.setTextSize(28 * k);
                 if (!t[i * 2 + 1].isEmpty()) c.drawText(t[i * 2 + 1], x + w - pad - 28 * k, base, menuValue);
             }
         }
@@ -505,6 +530,13 @@ public class PhotosActivity extends Activity {
         /** The overlay's paragraphs, wrapped to their column (the overlay is still: drawn only when it changes). */
         private android.text.TextPaint body, small;
 
+        /** `p` at `size`, or smaller so `text` fits in `max` (a longer language, a wider font). */
+        private static void fit(Paint p, String text, float size, float max) {
+            p.setTextSize(size);
+            float w = p.measureText(text);
+            if (w > max && w > 0) p.setTextSize(size * max / w);
+        }
+
         private void drawWrapped(Canvas c, String text, android.text.TextPaint p, float x, float y, float width) {
             android.text.StaticLayout l = android.text.StaticLayout.Builder.obtain(text, 0, text.length(), p, Math.round(width))
                     .setLineSpacing(0, 1.25f).setIncludePad(false).build();
@@ -533,7 +565,9 @@ public class PhotosActivity extends Activity {
             float pad = 80 * k;
             if (phoneIntro || phone == null) {
                 float tx = x + pad, tw = w - 2 * pad, ty = y + pad + 50 * k;
+                fit(title, Ui.tr("Import photos"), 54 * k, tw);
                 c.drawText(Ui.tr("Import photos"), tx, ty, title);
+                title.setTextSize(54 * k);
                 if (phone == null && !phoneIntro) {
                     drawWrapped(c, phoneError == null ? "" : phoneError, body, tx, ty + 50 * k, tw);
                     return;
@@ -546,14 +580,21 @@ public class PhotosActivity extends Activity {
                 drawWrapped(c, text, body, tx, py, tw);
                 py += wrappedHeight(text, body, tw) + 36 * k;
                 drawWrapped(c, Ui.tr("Your phone must be on the TV's Wi-Fi."), small, tx, py, tw);
-                // The OK that starts it, as a button
-                String ok = "OK";
-                float bw = optionValue.measureText(ok) + 96 * k;
-                rect.set(tx, y + h - pad - 76 * k, tx + bw, y + h - pad);
-                fill.setColor(0xFFF5F5F7);
-                c.drawRoundRect(rect, 22 * k, 22 * k, fill);
-                optionValue.setColor(INK);
-                c.drawText(ok, rect.left + 48 * k, rect.centerY() + Ui.halfCap(optionValue), optionValue);
+                // OK starts it, Cancel goes back: ← → between them
+                float bx = tx;
+                String[] buttons = {"OK", Ui.tr("Cancel")};
+                for (int i = 0; i < buttons.length; i++) {
+                    boolean on = (i == 1) == introCancel;
+                    fit(optionValue, buttons[i], 26 * k, tw / 2 - 120 * k);
+                    float bw = optionValue.measureText(buttons[i]) + 96 * k;
+                    rect.set(bx, y + h - pad - 76 * k, bx + bw, y + h - pad);
+                    fill.setColor(on ? 0xFFF5F5F7 : 0x26FFFFFF);
+                    c.drawRoundRect(rect, 22 * k, 22 * k, fill);
+                    optionValue.setColor(on ? INK : 0xF2FFFFFF);
+                    c.drawText(buttons[i], rect.left + 48 * k, rect.centerY() + Ui.halfCap(optionValue), optionValue);
+                    bx = rect.right + 24 * k;
+                }
+                optionValue.setTextSize(26 * k);
                 return;
             }
             // The code on a white tile, each module a whole number of pixels: sharp, and every reader gets it.
@@ -565,7 +606,9 @@ public class PhotosActivity extends Activity {
                 c.drawBitmap(qr, Math.round(rect.centerX() - qr.getWidth() / 2f), Math.round(rect.centerY() - qr.getHeight() / 2f), qrPaint);
             }
             float tx = x + pad + tile + 70 * k, tw = x + w - pad - tx, ty = y + pad + 50 * k;
+            fit(title, Ui.tr("Import photos"), 54 * k, tw);
             c.drawText(Ui.tr("Import photos"), tx, ty, title);
+            title.setTextSize(54 * k);
             String text = Ui.tr("Scan the code with your phone's camera,") + " "
                     + Ui.tr("choose the photos and send them.");
             float py = ty + 56 * k;
@@ -597,10 +640,12 @@ public class PhotosActivity extends Activity {
             if (!down) return ok || code == KeyEvent.KEYCODE_BACK;
             if (ok && e.getRepeatCount() > 0) return true;
             if (phoneIntro) {
-                if (ok) {
+                if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    introCancel = code == KeyEvent.KEYCODE_DPAD_RIGHT;
+                } else if (ok && !introCancel) {
                     phoneIntro = false;
                     openPhone();
-                } else if (code == KeyEvent.KEYCODE_BACK) {
+                } else if (ok || code == KeyEvent.KEYCODE_BACK) {
                     phoneIntro = false;
                 } else {
                     return code != KeyEvent.KEYCODE_HOME;
@@ -680,6 +725,7 @@ public class PhotosActivity extends Activity {
             switch (option) {
                 case O_PHONE:
                     phoneIntro = true;
+                    introCancel = false;
                     break;
                 case O_SLIDE: {
                     int now = Photos.slideSeconds(c), next = Photos.SLIDES[0];

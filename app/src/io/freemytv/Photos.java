@@ -10,6 +10,7 @@ import android.os.Handler;
 import android.os.Looper;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -23,11 +24,12 @@ import java.util.concurrent.Executors;
 
 /**
  * Your own photos. A computer puts them in the app's external files folder (tools/photos.py: adb push to
- * Android/data/io.freemytv/files/photos, no permission needed); the next time the home screen, the screensaver or the
- * settings open, each one is imported once into the app's private folder, turned upright (EXIF), cropped to 16:9 and
- * re-encoded at the screensaver's size (which also drops its GPS and other tags), and the original is deleted. While
- * they are on (Home Settings > My Photos), the screensaver shows them instead of the picks' photos, in the order they
- * came, and without picks (no TMDB key) one of them is the home screen's background, a new one every hour.
+ * Android/data/io.freemytv/files/photos, no permission needed) or, where adb can't reach it, through PhotoInbox; the
+ * next time the home screen, the screensaver or the settings open, each one is imported once into the app's private
+ * folder, turned upright (EXIF), kept whole at the screensaver's size (never cropped: see decode) and re-encoded (which
+ * also drops its GPS and other tags), and the original is deleted. While they are on (Home Settings > My Photos), the screensaver shows them
+ * instead of the picks' photos, in the order they came, and without picks (no TMDB key) one of them is the home
+ * screen's background, a new one every hour.
  */
 final class Photos {
     private Photos() {}
@@ -38,6 +40,19 @@ final class Photos {
     static final int MAX = 100;
     /** Smaller ones are icons and thumbnails, not photos. */
     private static final int MIN_SIDE = 640;
+    /**
+     * Filling the screen may cut this much of a photo's height or width at most: 3:2 (16%) and 4:3 (25%) fill, as
+     * do 21:9 (24%) and 2:1 (11%); a 1:1 (44%), a portrait (3:4: 58%) or a phone's panorama (3:1: 41%) is shown whole.
+     */
+    private static final float MAX_CUT = 0.30f;
+
+    /** Whether a w × h photo fills the screen (cropped, with the slow zoom) rather than shown whole on black. */
+    static boolean fills(int w, int h) {
+        if (w <= 0 || h <= 0) return true;
+        float photo = (float) w / h, screen = (float) W / H;
+        float cut = photo < screen ? 1 - photo / screen : 1 - screen / photo;
+        return cut <= MAX_CUT;
+    }
 
     private static File dir(Context c) {
         return new File(c.getFilesDir(), "photos");
@@ -48,20 +63,26 @@ final class Photos {
         return c.getExternalFilesDir("photos");
     }
 
-    /** Where PhotoInbox puts what adb writes when it can't reach the external folder (Fire OS). */
+    /**
+     * Where PhotoInbox puts what adb writes when it can't reach the external folder: Android 11 keeps adb out of other
+     * apps' Android/data folders (on Fire OS 8 too).
+     */
     static File privateInbox(Context c) {
         return new File(c.getFilesDir(), "inbox");
     }
 
-    /** What's waiting in both inboxes, in name order (a name starting with "." is still being written). */
-    private static File[] waiting(Context c) {
+    /**
+     * What's waiting in both inboxes, in name order: claims (another process importing) included, other hidden names
+     * (a photo PhotoInbox is still writing) left out.
+     */
+    private static File[] sent(Context c) {
         List<File> out = new ArrayList<>();
         for (File in : new File[] {inbox(c), privateInbox(c)}) {
             File[] all = in == null ? null : in.listFiles();
-            if (all != null) for (File f : all) if (!f.getName().startsWith(".")) out.add(f);
+            if (all != null) for (File f : all) if (!f.getName().startsWith(".") || f.getName().startsWith(CLAIM)) out.add(f);
         }
         File[] sorted = out.toArray(new File[0]);
-        Arrays.sort(sorted, (a, b) -> a.getName().compareTo(b.getName()));
+        Arrays.sort(sorted, (a, b) -> original(a.getName()).compareTo(original(b.getName())));
         return sorted;
     }
 
@@ -180,41 +201,77 @@ final class Photos {
         });
     }
 
+    /** A photo one process is importing is named ".claim-<when>-<its name>". */
+    private static final String CLAIM = ".claim-";
+    /** A claim this old was left by a process that died while importing: another one may take the photo. */
+    private static final long CLAIM_MS = 10 * 60_000L;
+
+    private static String original(String name) {
+        if (!name.startsWith(CLAIM)) return name;
+        int dash = name.indexOf('-', CLAIM.length());
+        return dash < 0 ? name : name.substring(dash + 1);
+    }
+
+    private static boolean abandoned(String claimed) {
+        int dash = claimed.indexOf('-', CLAIM.length());
+        if (dash < 0) return false;
+        try {
+            long when = Long.parseLong(claimed.substring(CLAIM.length(), dash));
+            return Math.abs(System.currentTimeMillis() - when) > CLAIM_MS;   // also one dated ahead: the clock went back
+        } catch (NumberFormatException e) {
+            return true;
+        }
+    }
+
     private static int importNow(Context c) {
-        File[] all = waiting(c);
+        File[] all = sent(c);
         if (all.length == 0) return 0;
         File d = dir(c);
         if (!d.isDirectory() && !d.mkdirs()) {
             AppLog.w("photos: can't create " + d);
             return 0;
         }
-        int have = files(c).size(), count = 0;
-        for (File src : all) {
-            if (!src.isFile()) continue;
-            if (!image(src.getName().toLowerCase(Locale.ROOT))) {
-                src.delete();
+        // Counted on disk, not from files(): its cache is keyed on the folder's time, which another process's import
+        // (or two within the same second) may not move.
+        File[] imported = d.listFiles((dir, name) -> name.endsWith(".jpg"));
+        int have = imported == null ? 0 : imported.length, count = 0;
+        for (File sent : all) {
+            if (!sent.isFile()) continue;
+            String name = sent.getName();
+            if (name.startsWith(CLAIM) && !abandoned(name)) continue;   // another process is importing it
+            String original = original(name);
+            if (!image(original.toLowerCase(Locale.ROOT))) {
+                sent.delete();
                 continue;
             }
             if (have + count >= MAX) {
-                AppLog.w("photos: " + MAX + " already, " + src.getName() + " waits");
+                AppLog.w("photos: " + MAX + " already, " + original + " waits");
                 continue;
             }
-            // Named by import time: the order they came is the order the screensaver shows them.
-            File out = new File(d, String.format(Locale.US, "%013d.jpg", System.currentTimeMillis() + count));
+            // Claimed with a rename before it's read: on Android 11 the screensaver (main process) and the home screen
+            // (:home) both import, and without it they could take the same photo twice.
+            File src = new File(sent.getParentFile(), CLAIM + System.currentTimeMillis() + "-" + original);
+            if (!sent.renameTo(src)) continue;
+            // Named by import time (the order they came is the order the screensaver shows them) and by process (the
+            // other one may import in the same millisecond); written as .part first, so a crash leaves no half photo.
+            File out = new File(d, String.format(Locale.US, "%013d-%d%s", System.currentTimeMillis() + count,
+                    android.os.Process.myPid(), original.startsWith(IMMICH) ? IMMICH_END : ".jpg"));
+            File part = new File(d, out.getName() + ".part");
             try {
                 Bitmap b = decode(src, W, H);
                 if (b == null) {
-                    AppLog.w("photos: skipped " + src.getName() + " (too small or unreadable)");
+                    AppLog.w("photos: skipped " + original + " (too small or unreadable)");
                 } else {
-                    try (OutputStream os = new FileOutputStream(out)) {
+                    try (OutputStream os = new FileOutputStream(part)) {
                         b.compress(Bitmap.CompressFormat.JPEG, 86, os);
                     }
                     b.recycle();
+                    if (!part.renameTo(out)) throw new IOException("can't name " + out.getName());
                     count++;
                 }
             } catch (IOException | RuntimeException | OutOfMemoryError e) {
-                out.delete();
-                AppLog.w("photos: skipped " + src.getName() + ": " + e.getMessage());
+                part.delete();
+                AppLog.w("photos: skipped " + original + ": " + e.getMessage());
             }
             src.delete();
         }
@@ -223,10 +280,54 @@ final class Photos {
         return count;
     }
 
-    /** Deletes the imported photos (and whatever is still waiting to be imported). */
+    // MARK: - Immich's (ImmichPhotos)
+
+    /** What ImmichPhotos leaves in the private inbox starts with this; imported, its name ends with IMMICH_END. */
+    static final String IMMICH = "immich-";
+    private static final String IMMICH_END = "-immich.jpg";
+
+    /** Imports what's waiting now, on the caller's thread (ImmichPhotos, between two downloads). */
+    static int importWaiting(Context c) {
+        return importNow(c.getApplicationContext());
+    }
+
+    /** Imported photos on disk (not files(): its cache may not have seen an import in this same second). */
+    static int count(Context c) {
+        File[] all = dir(c).listFiles((d, name) -> name.endsWith(".jpg"));
+        return all == null ? 0 : all.length;
+    }
+
+    /** The photos ImmichPhotos brought, oldest first; tools/photos.py's are never among them. */
+    static List<File> fromImmich(Context c) {
+        File[] all = dir(c).listFiles((d, name) -> name.endsWith(IMMICH_END));
+        List<File> out = new ArrayList<>(all == null ? Collections.<File>emptyList() : Arrays.asList(all));
+        Collections.sort(out);
+        return out;
+    }
+
+    /** When it was imported (its name starts with that time), or 0. */
+    static long importedAt(File f) {
+        try {
+            return Long.parseLong(f.getName().substring(0, 13));
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /** Takes Immich's away (and what of it still waits), keeping tools/photos.py's. */
+    static void removeImmich(Context c) {
+        for (File f : fromImmich(c)) f.delete();
+        File[] waiting = privateInbox(c).listFiles((d, name) -> name.contains(IMMICH));
+        if (waiting != null) for (File f : waiting) f.delete();
+    }
+
+    /** Deletes the imported photos and whatever is still waiting, half-sent ones included. */
     static void removeAll(Context c) {
         clear(dir(c));
-        for (File f : waiting(c)) f.delete();
+        clear(privateInbox(c));
+        File in = inbox(c);
+        File[] queued = in == null ? null : in.listFiles();
+        if (queued != null) for (File f : queued) f.delete();
         synchronized (Photos.class) {
             backdrop = null;
             built = null;
@@ -239,10 +340,13 @@ final class Photos {
     }
 
     /**
-     * The photo upright (EXIF), its center cropped to w:h and filtered down to w × h; null if too small or unreadable.
-     * It is decoded subsampled to about the UI's size (a 12 MP photo: 2000 × 1500, 12 MB, not 48), then drawn straight
-     * into the w × h result (cropped and scaled in one step) and only that is turned: at most the decoded photo and
-     * one or two 10 MB bitmaps at a time.
+     * The whole photo upright (EXIF), never cropped, so the look can change later without a new import: one that fills()
+     * is sized to cover w × h (the screensaver crops it to the screen, with the slow zoom), a portrait or a panorama is
+     * fitted inside w × h (shown whole, on black). A smaller photo is enlarged to that size too (a preview, a phone's
+     * screenshot). Null if too small or unreadable. Decoded from a FileDescriptor (the path form copies all of the file
+     * into memory first) and straight at its final size: halved while it stays larger, then scaled by the decoder itself
+     * (inDensity / inTargetDensity): a 24 MP photo is decoded at 3000 × 2000 (24 MB) and scaled into the result in the
+     * same call. Only that is turned.
      */
     private static Bitmap decode(File f, int w, int h) throws IOException {
         BitmapFactory.Options bounds = new BitmapFactory.Options();
@@ -252,30 +356,31 @@ final class Photos {
         if (Math.min(bounds.outWidth, bounds.outHeight) < MIN_SIDE) return null;
         int degrees = rotation(f);
         boolean sideways = degrees == 90 || degrees == 270;
-        // Everything below is in the photo's stored orientation: a sideways one is cropped and sized as h × w.
-        int tw = sideways ? h : w, th = sideways ? w : h;
-        float ratio = (float) tw / th;
-        int cw = Math.min(bounds.outWidth, Math.round(bounds.outHeight * ratio));
-        int ch = Math.min(bounds.outHeight, Math.round(cw / ratio));
-        // Only what the crop keeps decides the sample size: a portrait photo is cut to its middle band.
-        int keep = Math.round(Backdrop.W * 0.75f);
+        // The size it ends at, upright, then the same in the file's stored orientation
+        int uw = sideways ? bounds.outHeight : bounds.outWidth, uh = sideways ? bounds.outWidth : bounds.outHeight;
+        float sx = (float) w / uw, sy = (float) h / uh;
+        float scale = fills(uw, uh) ? Math.max(sx, sy) : Math.min(sx, sy);
+        int tw = Math.max(1, Math.round(uw * scale)), th = Math.max(1, Math.round(uh * scale));
+        int sw = sideways ? th : tw, sh = sideways ? tw : th;
         BitmapFactory.Options opts = new BitmapFactory.Options();
         opts.inSampleSize = 1;
-        while (Math.max(cw, ch) / (opts.inSampleSize * 2) >= keep) opts.inSampleSize *= 2;
-        Bitmap src = BitmapFactory.decodeFile(f.getPath(), opts);
+        while (bounds.outWidth / (opts.inSampleSize * 2) >= sw && bounds.outHeight / (opts.inSampleSize * 2) >= sh) {
+            opts.inSampleSize *= 2;
+        }
+        opts.inScaled = true;
+        opts.inDensity = Math.max(1, bounds.outWidth / opts.inSampleSize);
+        opts.inTargetDensity = sw;
+        Bitmap src;
+        try (FileInputStream in = new FileInputStream(f)) {
+            src = BitmapFactory.decodeFileDescriptor(in.getFD(), null, opts);
+        }
         if (src == null) return null;
-        float sx = (float) src.getWidth() / bounds.outWidth, sy = (float) src.getHeight() / bounds.outHeight;
-        float cx = cw * sx, cy = ch * sy, left = (src.getWidth() - cx) / 2, top = (src.getHeight() - cy) / 2;
-        Bitmap out = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
-        new android.graphics.Canvas(out).drawBitmap(src, new android.graphics.Rect(Math.round(left), Math.round(top),
-                Math.round(left + cx), Math.round(top + cy)), new android.graphics.Rect(0, 0, tw, th),
-                new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG | android.graphics.Paint.DITHER_FLAG));
-        src.recycle();
-        if (degrees == 0) return out;
+        src.setDensity(Bitmap.DENSITY_NONE);
+        if (degrees == 0) return src;
         Matrix m = new Matrix();
         m.setRotate(degrees);
-        Bitmap turned = Bitmap.createBitmap(out, 0, 0, tw, th, m, true);
-        if (turned != out) out.recycle();
+        Bitmap turned = Bitmap.createBitmap(src, 0, 0, src.getWidth(), src.getHeight(), m, true);
+        if (turned != src) src.recycle();
         return turned;
     }
 

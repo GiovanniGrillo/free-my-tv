@@ -187,9 +187,9 @@ final class Photos {
         }
         if (!part.renameTo(new File(d, CHOICES))) part.delete();
         listedStamp = -1;   // read again now: the folder's time may not have moved within the same second
-        synchronized (Photos.class) {
-            built = null;   // the home screen's photo may be another one now
-        }
+        // The home screen's photo may be another one now: built at once (backdrop() compares it with the one built), so
+        // it's ready, or nearly, when the home screen comes back.
+        if (homeOn(c)) backdrop(c, null);
     }
 
     /** In the screensaver (not left out in My Photos). */
@@ -298,6 +298,8 @@ final class Photos {
     private static final ExecutorService worker = Executors.newSingleThreadExecutor();
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static File built, building;
+    /** Who asked while it was being built: all are told once it's ready (the home screen redraws then). */
+    private static final java.util.Set<Runnable> readyWaiters = new java.util.LinkedHashSet<>();
     private static Backdrop backdrop;
 
     /**
@@ -313,23 +315,29 @@ final class Photos {
         List<File> list = files(c);
         File chosen = homePhoto(c);
         File want = chosen != null ? chosen : list.get((int) ((System.currentTimeMillis() / 3_600_000L) % list.size()));
+        if (ready != null && !want.equals(built)) readyWaiters.add(ready);   // told when it's done, even if built for another
         if (!want.equals(built) && !want.equals(building)) {
             building = want;
             worker.execute(() -> {
                 Backdrop b = null;
+                long t0 = android.os.SystemClock.uptimeMillis();
                 try {
                     Bitmap src = BitmapFactory.decodeFile(want.getPath());
                     if (src != null) b = Backdrop.make(src, true, true);
+                    AppLog.w("photos: background " + want.getName() + " ready in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
                 } catch (RuntimeException | OutOfMemoryError e) {
                     AppLog.w("photos: background from " + want.getName() + ": " + e.getMessage());
                 }
+                List<Runnable> tell;
                 synchronized (Photos.class) {
                     building = null;
+                    tell = new ArrayList<>(readyWaiters);
+                    readyWaiters.clear();
                     if (b == null) return;
                     backdrop = b;
                     built = want;
                 }
-                main.post(ready);
+                main.post(() -> { for (Runnable r : tell) r.run(); });
             });
         }
         return backdrop;

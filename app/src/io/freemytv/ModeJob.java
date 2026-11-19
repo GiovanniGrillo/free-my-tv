@@ -46,7 +46,7 @@ public class ModeJob extends JobService {
                     case GRANT_WATCH: HomeMode.grantWatchNow(app); break;
                     case REVOKE_WATCH: HomeMode.revokeWatchNow(app); break;
                     case POWER_ON: HomeMode.powerOnNow(app); break;
-                    case FIRE_TIDY: FireTidy.runNow(app); break;
+                    case FIRE_TIDY: FireTidy.runNow(app, FireTidy.REBIND.equals(mode)); break;
                     default: break;
                 }
             } catch (Throwable t) {

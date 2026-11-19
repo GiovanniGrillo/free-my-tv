@@ -26,31 +26,36 @@ final class FireTidy {
     private static final String HOME_ON_FIRE = "io.github.toolicious.homeonfire";
     private static final String HIJACK = HOME_ON_FIRE + "/" + HOME_ON_FIRE + ".HijackService";
 
-    /** At the TV's start (after it settles) and after this app's update. */
+    /**
+     * At the TV's start (after it settles) and after this app's update: also binds Home on Fire's service again. Once
+     * (2026-11-19) it stayed bound but stopped answering the Home button until it was turned off and on.
+     */
     static void schedule(Context c, long delayMs) {
-        if (HomeMode.FIRE_TV) ModeJob.schedule(c, ACTION, null, delayMs);
+        if (HomeMode.FIRE_TV) ModeJob.schedule(c, ACTION, REBIND, delayMs);
     }
+
+    static final String REBIND = "rebind";
 
     /** From the home screen: again if the last check is 12 hours old (cheap otherwise: one file's time). */
     static void scheduleIfDue(Context c) {
         if (!HomeMode.FIRE_TV) return;
         File stamp = new File(c.getFilesDir(), "fire-tidy");
         if (stamp.exists() && Math.abs(System.currentTimeMillis() - stamp.lastModified()) < EVERY_MS) return;
-        schedule(c, 5_000);
+        ModeJob.schedule(c, ACTION, null, 5_000);
     }
 
     /** The check itself (ModeJob, main process). */
-    static void runNow(Context c) {
+    static void runNow(Context c, boolean rebind) {
         if (!HomeMode.FIRE_TV) return;
         File stamp = new File(c.getFilesDir(), "fire-tidy");
         try {
             if (!stamp.createNewFile()) stamp.setLastModified(System.currentTimeMillis());
         } catch (java.io.IOException ignored) {}
-        settings(c);
+        settings(c, rebind);
     }
 
     /** Our screensaver, and Home on Fire's service (beside whatever else is on, like our key service). */
-    private static void settings(Context c) {
+    private static void settings(Context c, boolean rebind) {
         try {
             String saver = Settings.Secure.getString(c.getContentResolver(), "screensaver_components");
             if (!SAVER.equals(saver)) {
@@ -60,11 +65,23 @@ final class FireTidy {
             if (!installed(c, HOME_ON_FIRE)) return;
             String on = Settings.Secure.getString(c.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
             if (on == null || on.equals("null")) on = "";
-            if (!Arrays.asList(on.split(":")).contains(HIJACK)) {
+            boolean there = Arrays.asList(on.split(":")).contains(HIJACK);
+            if (there && rebind) {
+                // Off, then on: Android unbinds it and binds it again.
+                StringBuilder rest = new StringBuilder();
+                for (String s : on.split(":")) if (!s.isEmpty() && !s.equals(HIJACK)) rest.append(rest.length() > 0 ? ":" : "").append(s);
+                Settings.Secure.putString(c.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, rest.toString());
+                try {
+                    Thread.sleep(1500);
+                } catch (InterruptedException ignored) {}
+                on = rest.toString();
+                there = false;
+            }
+            if (!there) {
                 Settings.Secure.putString(c.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
                         on.isEmpty() ? HIJACK : HIJACK + ":" + on);
                 Settings.Secure.putInt(c.getContentResolver(), Settings.Secure.ACCESSIBILITY_ENABLED, 1);
-                AppLog.w("Fire TV tidy: Home on Fire's service on again");
+                AppLog.w(rebind ? "Fire TV tidy: Home on Fire's service bound again" : "Fire TV tidy: Home on Fire's service on again");
             }
         } catch (SecurityException e) {
             AppLog.w("Fire TV tidy: no WRITE_SECURE_SETTINGS (" + e.getMessage() + ")");

@@ -23,16 +23,24 @@ final class Look {
      */
     static final float GLASS = 0.3f, PANEL = 0.75f;
     /**
+     * By day the drawer's buttons and cards are frosted this much more (over a light photo the clear glass left gray
+     * text on gray: HDMI 2 and 3 with nothing plugged in barely showed).
+     */
+    static final float DAY_PANEL = 1.5f;
+    /** By day, the name and symbol of an input with nothing plugged in: dimmed, still readable on the frosted glass. */
+    static final int DAY_OFF = 0xFF66615B;
+    /**
      * By day the glass shows the photo behind it whitened (the frosted look); MILK scales how much: below 1 the photo's
      * own colors come through.
      */
     static final float MILK = 0.5f;
     /** How solid the focused button, tab and drawer item are: 1 opaque, lower lets the glass show through. */
     static final float FOCUS = 0.7f;
-    /** How long the screensaver shows each photo before the next one fades in (the original design: 30 s). */
+    /**
+     * How long the screensaver shows each photo before the next one fades in (the original design: 30 s); your own
+     * photos follow My Photos' choice, with this as the default.
+     */
     static final long SLIDE_MS = 120_000;
-    /** Your photos (Photos) also as the home screen's background; false: only the screensaver shows them. */
-    static final boolean PHOTO_HOME = false;
     /** Liquid Glass (Android 13+): how much the rim bends the image behind it, and its highlight. */
     static final float REFRACT = 1.8f, SHINE = 1.6f;
 
@@ -42,5 +50,9 @@ final class Look {
 
     static float panel(float alpha) {
         return Math.min(1, alpha * PANEL);
+    }
+
+    static float dayPanel(float alpha) {
+        return Math.min(0.92f, alpha * PANEL * DAY_PANEL);
     }
 }

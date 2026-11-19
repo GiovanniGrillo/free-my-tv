@@ -2209,7 +2209,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             tmp.offset(0, drop);
             shadow.setColor(Ui.alpha(shadowColor, 1 - dk));
             shadows.draw(c, tmp, radius, SHADOW_BLUR * k, shadow);
-            scene.glass(c, r, radius, glassLight(), Look.panel(lightTint), 0, 0, 0.02f, 1, 1 - dk);
+            scene.glass(c, r, radius, glassLight(), Look.dayPanel(lightTint), 0, 0, 0.02f, 1, 1 - dk);
         }
         if (dk > 0.001f) scene.glass(c, r, radius, SMOKE, Look.panel(0.4f), 0, 0, 0.02f, 1, dk);
     }
@@ -2265,7 +2265,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         boolean off = it.kind == HomeApps.INPUT && !it.connected
                 || it.kind == HomeApps.HOME_ASSISTANT && it.control != null && !it.control.on();
-        int ink = blend(tone(off ? 0xFF8E8E93 : L_INK, off ? 0x6BFFFFFF : 0xF2FFFFFF), INK, f);
+        int ink = blend(tone(off ? Look.DAY_OFF : L_INK, off ? 0x6BFFFFFF : 0xF2FFFFFF), INK, f);
         Symbols.draw(getContext(), c, it.symbol, cx, cell.top + cell.height() * 0.4f, 34 * k * s, ink);
         drawerLabel.setColor(ink);
         drawerLabel.setTextSize(23 * k * s);
@@ -4123,7 +4123,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (!picksMode()) {
             // No picks on screen: no cards, and the plain gradient behind, or with the clock your photo if there is one.
             if (!cards.isEmpty()) cards = new ArrayList<>();
-            boolean own = clockMode() && Photos.on(getContext());
+            boolean own = clockMode() && Photos.homeOn(getContext());
             Backdrop b = own ? Photos.backdrop(getContext(), ownReady) : null;
             if (b != null || !own) showBackdrop(b);
             heroDirty = true;
@@ -4145,7 +4145,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             for (int i = 0; i < Math.min(3, other.size()); i++) recs.backdrop(other.get(i));
         }
         // Picks bring their own background; without them (no TMDB key), your photo if there is one.
-        boolean own = Look.PHOTO_HOME && !picksOn() && Photos.on(getContext());
+        boolean own = !picksOn() && Photos.homeOn(getContext());
         Backdrop b = own ? Photos.backdrop(getContext(), ownReady)
                 : cards.isEmpty() ? null : recs.backdrop(cards.get(Math.min(cardIndex, cards.size() - 1)));
         if (b != null || (cards.isEmpty() && !own)) showBackdrop(b);

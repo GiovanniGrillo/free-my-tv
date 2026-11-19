@@ -43,7 +43,9 @@ import java.util.concurrent.Executors;
  * Without photos (no TMDB key, or before the first fetch): the big clock over the night aurora.
  */
 final class DreamView extends View implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
-    private static final long SHOW_MS = Look.SLIDE_MS, FADE_MS = 3_000, FIRST_MS = 1_600;
+    private static final long FADE_MS = 3_000, FIRST_MS = 1_600;
+    /** How long each photo shows: yours as My Photos says (Photos.slideSeconds), the picks' Look.SLIDE_MS. */
+    private long showMs = Look.SLIDE_MS;
     private static final float ZOOM = 0.1f;
     /** Photos 10% larger than the screen (the zoom goes up to 1.1 without upscaling). */
     private static final int PW = 2112, PH = 1188;
@@ -117,6 +119,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private final Recording content = Recording.create("clock");     // without photos: the clock over the aurora
     private final Recording chrome = Recording.create("corner");     // date, weather, prices and the clock's shadow
     private final float timeOffset = (float) (Math.random() * 300);
+    private final java.util.Random random = new java.util.Random();
     private final Matrix matrix = new Matrix();
     private final float[] placeA = new float[3], placeB = new float[3];
     private final Paint photoPaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
@@ -186,6 +189,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         lastFrame = 0;
         failed.clear();
         fallback = photos().isEmpty();
+        showMs = Photos.picks(getContext()).isEmpty() ? Look.SLIDE_MS : Photos.slideSeconds(getContext()) * 1000L;
         data.addListener(this);
         recs.addListener(this);
         data.refreshIfStale();
@@ -284,7 +288,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
     /** Your photos when they are on, otherwise the picks'. */
     private List<Recs.Pick> photos() {
-        return Photos.on(getContext()) ? Photos.picks(getContext()) : recs.showcase();
+        List<Recs.Pick> mine = Photos.picks(getContext());
+        return mine.isEmpty() ? recs.showcase() : mine;
     }
 
     /** Loads the next photo in the background (one at a time); once ready, it comes in at the right moment. */
@@ -301,6 +306,10 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
                     break;
                 }
             }
+        }
+        // Shuffled (My Photos): from anywhere but the one showing, so the same photo never comes twice in a row.
+        if (list.size() > 2 && list.get(0).photo != null && Photos.shuffled(getContext())) {
+            start = (start + random.nextInt(list.size() - 1)) % list.size();
         }
         Recs.Pick pick = null;
         for (int i = 0; i < list.size() && pick == null; i++) {
@@ -381,7 +390,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             prepareNext();
             return;
         }
-        if (incoming == null && prepared != null && up >= current.startedAt + SHOW_MS) {
+        if (incoming == null && prepared != null && up >= current.startedAt + showMs) {
             incoming = prepared;
             prepared = null;
             incoming.startedAt = up;
@@ -417,7 +426,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
      * portraits and panoramas stay still, whole.
      */
     private void place(Slide s, long up, float[] out) {
-        float u = Ui.clamp((up - s.startedAt) / (float) (SHOW_MS + FADE_MS));
+        float u = Ui.clamp((up - s.startedAt) / (float) (showMs + FADE_MS));
         float f = s.whole ? 0 : s.zoomIn ? u : 1 - u;
         float z = 1 + ZOOM * f;
         float rx = w * (z - 1) / 2, ry = h * (z - 1) / 2;

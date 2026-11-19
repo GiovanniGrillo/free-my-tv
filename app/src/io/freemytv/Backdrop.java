@@ -47,6 +47,12 @@ final class Backdrop {
     final Bitmap lightImage;            // by day: the background (the lightened frosted version, scaled up on screen)
     final int[] nightFrost, nightGlass; // at night: frosted (the bottom drawer's frosted glass) and glass, darkened
     final Bitmap nightImage;            // at night: the background (the darkened frosted version)
+    /**
+     * Your own photo (personal build): lightImage is the photo itself, sharp at the screen's size, and the home screen
+     * draws the day or night veil over it (veils: the same whitening and darkening, as gradients) instead of a blurred
+     * copy scaled up. One full-size image instead of two small ones.
+     */
+    final boolean veiled;
 
     private Backdrop(Bitmap image, int[] frost, int[] glass, Bitmap wide, int[] light, int[] lightGlass,
                      int[] night, int[] nightGlass) {
@@ -67,6 +73,43 @@ final class Backdrop {
         this.nightGlass = nightGlass;
         lightImage = lightBg == null ? null : Bitmap.createBitmap(lightBg, bw, bh, Bitmap.Config.ARGB_8888);
         nightImage = nightBg == null ? null : Bitmap.createBitmap(nightBg, bw, bh, Bitmap.Config.ARGB_8888);
+        veiled = false;
+    }
+
+    /** Your own photo, sharp: `photo` (W × H) is the background, with the veils drawn over it. */
+    private Backdrop(Bitmap photo, int[] frost, Bitmap wide, int[] light, int[] lightGlass, int[] night, int[] nightGlass) {
+        image = null;
+        this.frost = frost;
+        glass = null;
+        this.wide = wide;
+        wideShader = wide == null ? null : new BitmapShader(wide, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+        this.light = light;
+        this.lightGlass = lightGlass;
+        nightFrost = night;
+        this.nightGlass = nightGlass;
+        lightImage = photo;
+        nightImage = null;
+        veiled = true;
+    }
+
+    /**
+     * The veil over your photo, from the left edge to the right (x as a fraction of the width): it whitens (by
+     * day: white) or darkens (at night: near black) it, strong behind the clock and the weather, lighter to the right.
+     */
+    static android.graphics.LinearGradient veil(float width, boolean light) {
+        float left = light ? 0.82f : 0.76f, right = light ? 0.45f : 0.5f;
+        int base = light ? 0xFFFFFF : 0x0B0B0D;
+        int n = 9;
+        int[] colors = new int[n];
+        float[] at = new float[n];
+        for (int i = 0; i < n; i++) {
+            float x = i == 0 ? 0 : i == n - 1 ? 1 : 0.45f + 0.25f * (i - 1) / (n - 3);
+            float t = Math.max(0, Math.min(1, (x - 0.45f) / 0.25f));
+            float a = left + (right - left) * t * t * (3 - 2 * t);
+            at[i] = x;
+            colors[i] = (Math.round(255 * a) << 24) | base;
+        }
+        return new android.graphics.LinearGradient(0, 0, width, 0, colors, at, Shader.TileMode.CLAMP);
     }
 
     static Backdrop make(Bitmap src, boolean forLight) {
@@ -101,12 +144,7 @@ final class Backdrop {
             int[] lightGlass = whiten(glass.clone(), 0.74f * Look.MILK);
             int[] night = darken(frost.clone(), 0.76f);
             int[] nightGlass = darken(glass, 0.56f);
-            if (own) {
-                int[] sharp = reduce(out, GW, GH, 1, 1);
-                int[] lightBg = ramp(sharp.clone(), 0.82f, 0.45f, true), nightBg = ramp(sharp, 0.76f, 0.5f, false);
-                out.recycle();
-                return new Backdrop(null, frost, null, wide, light, lightGlass, night, nightGlass, lightBg, nightBg, GW, GH);
-            }
+            if (own) return new Backdrop(out, frost, wide, light, lightGlass, night, nightGlass);   // kept, sharp
             out.recycle();
             return new Backdrop(null, frost, null, wide, light, lightGlass, night, nightGlass);
         }
@@ -258,18 +296,6 @@ final class Backdrop {
     }
 
     /** Whitens (or darkens) by `left` up to 45% of the width, easing to `right` by 70% (a GW × GH image). */
-    private static int[] ramp(int[] px, float left, float right, boolean light) {
-        int[] col = new int[GH];
-        for (int x = 0; x < GW; x++) {
-            float t = Math.max(0, Math.min(1, (x / (float) GW - 0.45f) / 0.25f));
-            float a = left + (right - left) * t * t * (3 - 2 * t);
-            for (int y = 0; y < GH; y++) col[y] = px[y * GW + x];
-            if (light) whiten(col, a); else darken(col, a);
-            for (int y = 0; y < GH; y++) px[y * GW + x] = col[y];
-        }
-        return px;
-    }
-
     private static int[] whiten(int[] px, float amount) {
         for (int i = 0; i < px.length; i++) {
             int p = px[i];

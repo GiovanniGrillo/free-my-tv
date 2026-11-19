@@ -1537,6 +1537,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             0, 0, 0, 1, 0});
     }
 
+    private Paint veilDay, veilNight;   // made once per screen width (drawLightImage)
+    private float veilWidth;
+
     private void drawImage(Canvas c, Bitmap image, float alpha) {
         if (image == null || alpha <= 0.004f) return;
         imagePaint.setAlpha(Math.round(255 * Math.min(1, alpha)));
@@ -4711,6 +4714,22 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void drawLightImage(Canvas c, Backdrop b, float alpha) {
+        if (b.veiled) {
+            // Your photo, sharp, then the day veil fading into the night one
+            drawImage(c, b.lightImage, alpha);
+            if (veilDay == null || veilWidth != screen.width()) {
+                veilWidth = screen.width();
+                veilDay = new Paint();
+                veilDay.setShader(Backdrop.veil(veilWidth, true));
+                veilNight = new Paint();
+                veilNight.setShader(Backdrop.veil(veilWidth, false));
+            }
+            veilDay.setAlpha(Math.round(255 * Ui.clamp(alpha * (1 - night))));
+            if (night < 0.999f) c.drawRect(screen, veilDay);
+            veilNight.setAlpha(Math.round(255 * Ui.clamp(alpha * night)));
+            if (night > 0.001f) c.drawRect(screen, veilNight);
+            return;
+        }
         if (night < 0.999f || b.nightImage == null) drawImage(c, b.lightImage, alpha);
         if (night > 0.001f) drawImage(c, b.nightImage, alpha * night);
     }

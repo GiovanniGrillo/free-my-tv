@@ -73,7 +73,7 @@ final class HomeData {
     private static String weatherUrl() {
         return "https://api.open-meteo.com/v1/forecast?latitude=" + Prefs.latitude() + "&longitude=" + Prefs.longitude() + WEATHER_QUERY;
     }
-    private static final long PRICES_EVERY = 5 * 60_000L, WEATHER_EVERY = 30 * 60_000L;
+    private static final long PRICES_EVERY = 5 * 60_000L, WEATHER_EVERY = 60 * 60_000L;   // personal build: once an hour (the forecast holds the hours between)
     interface Listener { void onData(); }
 
     /** BTC, ETH and SOL; in Brazilian reais or converted from USDT, also the dollar (USDT in local currency). */

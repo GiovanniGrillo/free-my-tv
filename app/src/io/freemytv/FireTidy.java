@@ -16,7 +16,8 @@ import java.util.Arrays;
  *
  * Every 30 minutes it also closes what runs in the background for nothing (KILL_BACKGROUND_PROCESSES, as Android does
  * itself when it needs memory): Amazon's apps from firetv/disabled.txt that turned themselves back on, and the streaming
- * apps left open behind. Android only lets this close background processes: the app in front, music that plays (a
+ * apps left open behind, but never Prime Video, Netflix, Spotify or YouTube (MAIN_APPS). Android only lets this close
+ * background processes: the app in front, music that plays (a
  * foreground service) and persistent system pieces stay; Amazon's home screen, Live TV and its tuner (Vewd), settings,
  * keyboards and accessibility services (Home on Fire) are never asked. An app closed this way starts again from its
  * own home the next time.
@@ -99,10 +100,13 @@ final class FireTidy {
             "com.amazon.alta.h2clientservice"
     };
 
-    /** Amazon's own streaming apps (system apps, so not found by the installed-apps rule). */
-    private static final String[] AMAZON_MEDIA = {
-            "com.amazon.firebat", "com.amazon.avod", "com.amazon.firetv.youtube", "com.amazon.amazonvideo.livingroom",
-            "com.amazon.bueller.music"};   // not the Appstore: it may be updating an app
+    /** Amazon's own media apps beyond the main ones (system apps, so not found by the installed-apps rule). */
+    private static final String[] AMAZON_MEDIA = {"com.amazon.bueller.music"};   // not the Appstore: it may be updating an app
+
+    /** The apps used every day: never closed, so they reopen where they were (Prime Video, Netflix, Spotify, YouTube). */
+    private static final String[] MAIN_APPS = {
+            "com.amazon.firebat", "com.amazon.avod", "com.amazon.amazonvideo.livingroom", "com.netflix.ninja",
+            "com.spotify.tv.android", "com.amazon.firetv.youtube", "com.google.android.youtube.tv"};
 
     /** Never closed: what the TV and this setup need running. */
     private static final java.util.Set<String> KEEP = new java.util.HashSet<>(Arrays.asList(
@@ -148,6 +152,7 @@ final class FireTidy {
         PackageManager pm = c.getPackageManager();
         if (am == null) return;
         java.util.Set<String> keep = new java.util.HashSet<>(KEEP);
+        keep.addAll(Arrays.asList(MAIN_APPS));
         // Keyboards and accessibility services: closing one would turn it off until the TV restarts.
         android.view.inputmethod.InputMethodManager imm = c.getSystemService(android.view.inputmethod.InputMethodManager.class);
         if (imm != null) for (android.view.inputmethod.InputMethodInfo i : imm.getEnabledInputMethodList()) keep.add(i.getPackageName());

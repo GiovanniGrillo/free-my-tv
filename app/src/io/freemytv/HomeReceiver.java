@@ -17,6 +17,7 @@ public class HomeReceiver extends BroadcastReceiver {
         } else if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
             HomeMode.verify(context);   // app updated: complete Free My TV mode if something is missing
             HomeMode.ensureRemoteService(context, 3_000);
+            FireTidy.schedule(context, 10_000);
             Updates.schedule(context);
             later(() -> Updates.cleanUp(context));
         } else if (Updates.ACTION.equals(action)) {

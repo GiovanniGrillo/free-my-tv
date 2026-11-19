@@ -327,7 +327,10 @@ final class HomeMode {
 
     /** After the TV boots (and after a TV update): wait for the system to settle and check Free My TV mode. */
     static void bootCheck(Context c) {
-        if (FIRE_TV) return;
+        if (FIRE_TV) {
+            FireTidy.schedule(c, 60_000);   // what Amazon turned back on at this start
+            return;
+        }
         ensureRemoteService(c, 30_000);
         ModeJob.schedule(c, ModeJob.VERIFY, null, 45_000);
         Prefs.reload();

@@ -54,11 +54,20 @@ final class PhotoPage {
         byte[] random = new byte[12];
         new SecureRandom().nextBytes(random);
         path = "/" + Base64.getUrlEncoder().withoutPadding().encodeToString(random);
+        // Halves of photos left by a page that stopped midway (the TV turned off): never named, never imported.
+        File[] stale = Photos.privateInbox(app).listFiles((d, n) -> n.startsWith(".phone-") && n.endsWith(".part"));
+        if (stale != null) for (File f : stale) if (System.currentTimeMillis() - f.lastModified() > 10 * 60_000L) f.delete();
         server = new ServerSocket(0, 4, lan);
         url = "http://" + lan.getHostAddress() + ":" + server.getLocalPort() + path;
         Thread t = new Thread(this::serve, "PhotoPage");
         t.setDaemon(true);
         t.start();
+    }
+
+    /** Photos this page brought that wait in the inbox (the import takes them one at a time). */
+    private int waiting() {
+        File[] all = Photos.privateInbox(app).listFiles((d, n) -> n.startsWith("phone-") || n.startsWith(".phone-"));
+        return all == null ? 0 : all.length;
     }
 
     boolean isClosed() {
@@ -138,7 +147,7 @@ final class PhotoPage {
             respond(out, "410 Gone", "text/plain; charset=utf-8", new byte[0]);
             return;
         }
-        if (Photos.count(app) >= Photos.MAX) {
+        if (Photos.count(app) + waiting() >= Photos.MAX) {   // also those sent that aren't imported yet
             respond(out, "409 Conflict", "text/plain; charset=utf-8", new byte[0]);
             return;
         }
@@ -150,12 +159,14 @@ final class PhotoPage {
         boolean whole = false;
         try (OutputStream os = new FileOutputStream(part)) {
             byte[] buf = new byte[64 * 1024];
-            int left = length, first = -1;
+            int left = length, seen = 0;
             while (left > 0) {
                 int got = in.read(buf, 0, Math.min(buf.length, left));
                 if (got < 0 || System.nanoTime() > deadline) throw new IOException("cut short");
-                if (first < 0) first = (buf[0] & 0xFF) << 8 | (got > 1 ? buf[1] & 0xFF : 0);
-                if (first != 0xFFD8) break;   // the page sends JPEG only
+                // The page sends JPEG only: FF D8 first (checked byte by byte: a read may bring just one)
+                boolean jpeg = true;
+                for (int i = 0; i < got && seen < 2; i++, seen++) jpeg &= (buf[i] & 0xFF) == (seen == 0 ? 0xFF : 0xD8);
+                if (!jpeg) break;
                 os.write(buf, 0, got);
                 left -= got;
             }

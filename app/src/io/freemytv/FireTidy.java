@@ -20,7 +20,8 @@ import java.util.Arrays;
 final class FireTidy {
     private FireTidy() {}
 
-    static final String ACTION = "fireTidy";
+    /** Two jobs, as ModeJob keeps one pending per action: the home screen's 12-hour check must not replace the start's. */
+    static final String ACTION = "fireTidy", REBIND_ACTION = "fireStart";   // ids 1864 and 1404: apart
     private static final long EVERY_MS = 12 * 60 * 60_000L;
     private static final String SAVER = "io.freemytv/io.freemytv.ScreensaverAlone";
     private static final String HOME_ON_FIRE = "io.github.toolicious.homeonfire";
@@ -31,10 +32,8 @@ final class FireTidy {
      * (2026-11-19) it stayed bound but stopped answering the Home button until it was turned off and on.
      */
     static void schedule(Context c, long delayMs) {
-        if (HomeMode.FIRE_TV) ModeJob.schedule(c, ACTION, REBIND, delayMs);
+        if (HomeMode.FIRE_TV) ModeJob.schedule(c, REBIND_ACTION, null, delayMs);
     }
-
-    static final String REBIND = "rebind";
 
     /** From the home screen: again if the last check is 12 hours old (cheap otherwise: one file's time). */
     static void scheduleIfDue(Context c) {

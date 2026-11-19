@@ -450,7 +450,7 @@ public class PhotosActivity extends Activity {
 
         private String hintText() {
             if (phoneIntro) return Ui.tr("OK starts it, Back cancels.");
-            if (phone != null || phoneError != null) return Ui.tr("Back closes.");
+            if (phone != null || phoneError != null) return Ui.tr("OK or Back closes.");
             if (moveFrom != null) return Ui.tr("← → to move · OK to drop · Back to cancel");
             if (menuOpen) return Ui.tr("OK picks, Back cancels.");
             if (focus < 0) return Ui.tr("OK or the arrows change the value.");
@@ -621,8 +621,18 @@ public class PhotosActivity extends Activity {
             float uw = urlPaint.measureText(phone.url);
             if (uw > tw) urlPaint.setTextSize(24 * k * tw / uw);
             c.drawText(phone.url, tx, py + 24 * k, urlPaint);
+            // The one button (OK, or Back): Close while nothing came, Done once photos did
+            String label = arrived > 0 ? Ui.tr("Done") : Ui.tr("Close");
+            fit(optionValue, label, 26 * k, tw - 96 * k);
+            float bw = optionValue.measureText(label) + 96 * k;
+            rect.set(tx, y + h - pad - 76 * k, tx + bw, y + h - pad);
+            fill.setColor(0xFFF5F5F7);
+            c.drawRoundRect(rect, 22 * k, 22 * k, fill);
+            optionValue.setColor(INK);
+            c.drawText(label, rect.left + 48 * k, rect.centerY() + Ui.halfCap(optionValue), optionValue);
+            optionValue.setTextSize(26 * k);
             if (arrived > 0) {
-                c.drawText(Ui.trf("Arrived: {n}", "n", arrived), tx, y + h - pad, arrivedPaint);
+                c.drawText(Ui.trf("Arrived: {n}", "n", arrived), rect.right + 36 * k, rect.centerY() + Ui.halfCap(arrivedPaint), arrivedPaint);
             }
         }
 
@@ -633,8 +643,9 @@ public class PhotosActivity extends Activity {
             boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
             boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER;
             if (viewing) {
+                // Closed by the next key pressed, not by letting go of the OK that opened it (that closed it at once).
                 if (code == KeyEvent.KEYCODE_HOME) return false;
-                if (!down) closeWhole();
+                if (down && e.getRepeatCount() == 0) closeWhole();
                 return true;
             }
             if (!down) return ok || code == KeyEvent.KEYCODE_BACK;

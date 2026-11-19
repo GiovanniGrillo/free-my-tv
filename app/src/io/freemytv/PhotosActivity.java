@@ -56,6 +56,7 @@ public class PhotosActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        view.closePhone();
         view.release();
         super.onDestroy();
     }
@@ -65,7 +66,7 @@ public class PhotosActivity extends Activity {
         private static final float CELL_W = 328, CELL_H = 184.5f, GAP_X = 28, GAP_Y = 34, GRID_TOP = 322, OPTIONS_Y = 178;
         private static final int AMBER = 0xFFFFC266, INK = 0xFF1C1C1E;
         /** The options row's buttons. */
-        private static final int O_SLIDE = 0, O_ORDER = 1, O_HOME = 2, O_REMOVE = 3, OPTIONS = 4;
+        private static final int O_PHONE = 0, O_SLIDE = 1, O_ORDER = 2, O_HOME = 3, O_REMOVE = 4, OPTIONS = 5;
         /** The menu on a photo. */
         private static final int M_SAVER = 0, M_HOME = 1, M_MOVE = 2, M_VIEW = 3, M_REMOVE = 4, MENU = 5;
 
@@ -93,12 +94,20 @@ public class PhotosActivity extends Activity {
         private Bitmap whole;
         private boolean viewing;
         private boolean released;
+        /** From your phone: the page the QR code opens, its code, and how many came while it shows. */
+        private PhotoPage phone;
+        private Bitmap qr;
+        private String phoneError;
+        /** Import photos: first what will happen (OK starts it, Back doesn't). */
+        private boolean phoneIntro;
+        private int arrived;
+        private final Paint qrPaint = new Paint();   // no filtering: the modules stay sharp
 
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint imagePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Paint background = new Paint();
-        private final Paint title, count, optionLabel, optionValue, hint, badge, menuLabel, menuValue, empty;
+        private final Paint title, count, optionLabel, optionValue, hint, badge, menuLabel, menuValue, empty, menuValueLeft, arrivedPaint;
         private final RectF cell = new RectF(), rect = new RectF();
         private final Matrix matrix = new Matrix();
 
@@ -117,6 +126,8 @@ public class PhotosActivity extends Activity {
             menuValue = Ui.text(Ui.regular, 26 * k, 0xB3FFFFFF);
             menuValue.setTextAlign(Paint.Align.RIGHT);
             empty = Ui.text(Ui.regular, 30 * k, 0xB3FFFFFF);
+            menuValueLeft = Ui.text(Ui.regular, 30 * k, 0xE6FFFFFF);
+            arrivedPaint = Ui.text(Ui.semibold, 32 * k, 0xFF7EE08A);
             empty.setTextAlign(Paint.Align.CENTER);
             ring.setStyle(Paint.Style.STROKE);
             reload();
@@ -257,14 +268,14 @@ public class PhotosActivity extends Activity {
                     left + title.measureText(Ui.tr("My Photos")) + 28 * k, 118 * k, count);
             drawOptions(c, left);
             if (photos.isEmpty()) {
-                c.drawText(Ui.tr("Send them from a computer: see “Your own photos” in the README."), getWidth() / 2f,
-                        620 * k, empty);
+                c.drawText(Ui.tr("No photos yet: send them from your phone with Import photos."), getWidth() / 2f, 620 * k, empty);
             }
             File home = Photos.homePhoto(ctx());
             int first = scrollRow * COLS, last = Math.min(photos.size(), (scrollRow + VISIBLE_ROWS) * COLS);
             for (int i = first; i < last; i++) if (i != focus) drawPhoto(c, i, home);
             if (focus >= first && focus < last) drawPhoto(c, focus, home);
             if (menuOpen) drawMenu(c);
+            if (phone != null || phoneError != null || phoneIntro) drawPhone(c);
             c.drawText(hintText(), left, 1040 * k, hint);
         }
 
@@ -278,6 +289,7 @@ public class PhotosActivity extends Activity {
             String home = Photos.homeOff(ctx()) ? Ui.tr("Off")
                     : Photos.homePhoto(ctx()) != null ? Ui.tr("This photo") : Ui.tr("Every hour");
             return new String[] {
+                    "", Ui.tr("Import photos") + " ↑",
                     Ui.tr("Each photo"), slide,
                     Ui.tr("Order"), Photos.shuffled(ctx()) ? Ui.tr("Shuffled") : Ui.tr("In order"),
                     Ui.tr("Home background"), home,
@@ -412,10 +424,110 @@ public class PhotosActivity extends Activity {
         }
 
         private String hintText() {
+            if (phoneIntro) return Ui.tr("OK starts it, Back cancels.");
+            if (phone != null || phoneError != null) return Ui.tr("Back closes.");
             if (moveFrom != null) return Ui.tr("← → to move · OK to drop · Back to cancel");
             if (menuOpen) return Ui.tr("OK picks, Back cancels.");
             if (focus < 0) return Ui.tr("OK or the arrows change the value.");
             return Ui.tr("OK: what to do with this photo. Back: done.");
+        }
+
+        // MARK: - From your phone (PhotoPage)
+
+        private void openPhone() {
+            closePhone();
+            arrived = 0;
+            java.net.InetAddress lan = KeyPage.lanAddress(ctx());
+            if (lan == null) {
+                phoneError = Ui.tr("The TV isn't on a network.");
+                return;
+            }
+            try {
+                phone = new PhotoPage(ctx(), lan, new PhotoPage.Listener() {
+                    @Override public void received() {
+                        main.post(() -> {
+                            arrived++;
+                            Photos.importInbox(ctx(), () -> {
+                                if (released) return;
+                                reload();
+                                invalidate();
+                            });
+                            invalidate();
+                        });
+                    }
+
+                    @Override public void closed() {
+                        main.post(() -> {
+                            if (phone != null && phone.isClosed()) closePhone();   // its 30 minutes ran out
+                            invalidate();
+                        });
+                    }
+                });
+                qr = qrBitmap(Qr.encode(phone.url));
+                // While the code shows, the TV's screensaver doesn't cover it.
+                activity.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            } catch (java.io.IOException | RuntimeException e) {
+                closePhone();
+                phoneError = Ui.trf("Error: {error}.", "error", String.valueOf(e.getMessage()));
+            }
+        }
+
+        void closePhone() {
+            PhotoPage p = phone;
+            phone = null;
+            phoneError = null;
+            phoneIntro = false;
+            if (p != null) p.close();
+            qr = null;
+            activity.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+
+        /** The QR code's modules as a bitmap, one pixel each, with the light margin readers need (4 modules). */
+        private static Bitmap qrBitmap(boolean[][] modules) {
+            int quiet = 4, n = modules.length + 2 * quiet;
+            int[] pixels = new int[n * n];
+            java.util.Arrays.fill(pixels, 0xFFFFFFFF);
+            for (int y = 0; y < modules.length; y++) {
+                for (int x = 0; x < modules.length; x++) if (modules[y][x]) pixels[(y + quiet) * n + x + quiet] = 0xFF000000;
+            }
+            return Bitmap.createBitmap(pixels, n, n, Bitmap.Config.ARGB_8888);
+        }
+
+        private void drawPhone(Canvas c) {
+            fill.setColor(0xD9000000);
+            c.drawRect(0, 0, getWidth(), getHeight(), fill);
+            float w = 1180 * k, h = 600 * k, x = (getWidth() - w) / 2f, y = 210 * k;
+            rect.set(x, y, x + w, y + h);
+            fill.setColor(0xFF262321);
+            c.drawRoundRect(rect, 34 * k, 34 * k, fill);
+            if (phoneIntro) {
+                float tx = x + 70 * k;
+                c.drawText(Ui.tr("Import photos"), tx, y + 120 * k, title);
+                String[] lines = {
+                        Ui.tr("With OK, the TV opens a small private page on its Wi-Fi"),
+                        Ui.tr("and shows a code. Scan it with your phone's camera,"),
+                        Ui.tr("choose the photos and send them: they come straight here,"),
+                        Ui.tr("without the internet. The page closes when you leave this screen.")};
+                for (int i = 0; i < lines.length; i++) c.drawText(lines[i], tx, y + (220 + i * 56) * k, menuValueLeft);
+                c.drawText(Ui.tr("Your phone must be on the TV's Wi-Fi."), tx, y + 500 * k, hint);
+                return;
+            }
+            if (phone == null) {
+                c.drawText(phoneError == null ? "" : phoneError, x + 60 * k, y + 120 * k, menuLabel);
+                return;
+            }
+            float side = 440 * k, qx = x + 60 * k, qy = y + 80 * k;
+            rect.set(qx, qy, qx + side, qy + side);
+            if (qr != null) c.drawBitmap(qr, null, rect, qrPaint);
+            float tx = qx + side + 60 * k;
+            c.drawText(Ui.tr("Import photos"), tx, y + 140 * k, title);
+            c.drawText(Ui.tr("Scan the code with your phone's camera,"), tx, y + 220 * k, menuValueLeft);
+            c.drawText(Ui.tr("choose the photos and send them."), tx, y + 262 * k, menuValueLeft);
+            c.drawText(Ui.tr("Your phone must be on the TV's Wi-Fi."), tx, y + 330 * k, hint);
+            c.drawText(phone.url, tx, y + 380 * k, hint);   // to type it, where the camera can't read the code
+            if (arrived > 0) {
+                c.drawText(Ui.trf("Arrived: {n}", "n", arrived), tx, y + 440 * k, arrivedPaint);
+            }
         }
 
         // MARK: - Keys
@@ -431,6 +543,26 @@ public class PhotosActivity extends Activity {
             }
             if (!down) return ok || code == KeyEvent.KEYCODE_BACK;
             if (ok && e.getRepeatCount() > 0) return true;
+            if (phoneIntro) {
+                if (ok) {
+                    phoneIntro = false;
+                    openPhone();
+                } else if (code == KeyEvent.KEYCODE_BACK) {
+                    phoneIntro = false;
+                } else {
+                    return code != KeyEvent.KEYCODE_HOME;
+                }
+                invalidate();
+                return true;
+            }
+            if (phone != null || phoneError != null) {
+                if (code == KeyEvent.KEYCODE_BACK || ok) {
+                    closePhone();
+                    invalidate();
+                    return true;
+                }
+                return code != KeyEvent.KEYCODE_HOME;
+            }
             if (code == KeyEvent.KEYCODE_BACK) {
                 if (moveFrom != null) {
                     File moving = photos.get(focus);
@@ -462,7 +594,7 @@ public class PhotosActivity extends Activity {
                     else focus = -1;
                     break;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
-                    if (focus < 0) focus = photos.isEmpty() ? -1 : 0;
+                    if (focus < 0 && !photos.isEmpty()) focus = 0;
                     else if (focus + COLS < photos.size()) focus += COLS;
                     else if (focus / COLS < (photos.size() - 1) / COLS) focus = photos.size() - 1;
                     break;
@@ -493,6 +625,9 @@ public class PhotosActivity extends Activity {
         private void changeOption() {
             Context c = ctx();
             switch (option) {
+                case O_PHONE:
+                    phoneIntro = true;
+                    break;
                 case O_SLIDE: {
                     int now = Photos.slideSeconds(c), next = Photos.SLIDES[0];
                     for (int i = 0; i < Photos.SLIDES.length; i++) {

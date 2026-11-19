@@ -2495,7 +2495,7 @@ public class SettingsActivity extends Activity {
             c.drawText(where + (screen == HOME_SETTINGS && from + focus == PHOTOS_ROW ? (ImmichPhotos.configured(getContext())
                     ? Ui.tr("OK chooses where they come from: default, Immich or an album.")
                     : Photos.files(getContext()).isEmpty()
-                    ? Ui.tr("Send them from a computer: see “Your own photos” in the README.")
+                    ? Ui.tr("OK: send them from your phone.")
                     : Ui.tr("OK opens them; the arrows turn them on or off."))
                     : screen == POWER && powerRow() != P_SHOW && unavailable(focus) == null ? Ui.tr("OK opens the list. ← → change the value.")
                     : screen == HOME_SETTINGS && from + focus == POWER_ON_ROW && unavailable(focus) == null
@@ -2580,7 +2580,7 @@ public class SettingsActivity extends Activity {
                 openPhotoSources();
             } else if (screen == HOME_SETTINGS && pickScroll + focus == PHOTOS_ROW) {
                 // My Photos: each one, its place, in the screensaver or not, the home screen's (PhotosActivity)
-                if (!Photos.files(getContext()).isEmpty()) activity.startActivity(new Intent(activity, PhotosActivity.class));
+                activity.startActivity(new Intent(activity, PhotosActivity.class));
                 return;
             } else if (screen == HOME_SETTINGS && pickScroll + focus == updatesRow()) {
                 updateNow();

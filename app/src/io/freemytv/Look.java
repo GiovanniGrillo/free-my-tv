@@ -10,8 +10,11 @@ final class Look {
 
     /** Fill of the focused button, tab, drawer item and settings row (light colors: the text on it stays dark). */
     static final int ACCENT = 0xFFFBF7F1;
-    /** A thin ring of this color around the focused app on the shelf; 0: none. */
-    static final int RING = 0xFFB8875C;
+    /**
+     * A thin ring around the focused app and button: near black by day, light gray at night (a black one would vanish
+     * on the night look); RING 0: none.
+     */
+    static final int RING = 0xFF2C2C2E, RING_NIGHT = 0xFFAEAEB2;
     /** The glass's own color: by day (warm white) and at night (warm charcoal). */
     static final int CLEAR = 0xFFFFF8EF, SMOKE = 0xFF1A1613;
     /** Background without a photo: top and bottom of the gradient, by day and at night. */

@@ -1987,7 +1987,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float gap = 7 * k;
         tmp.set(cell.left - gap, cell.top - gap, cell.right + gap, cell.bottom + gap);
         ring.setStrokeWidth(3 * k);
-        ring.setColor(Ui.alpha(Look.RING, f));
+        ring.setColor(Ui.alpha(tone(Look.RING, Look.RING_NIGHT), f));
         c.drawRoundRect(tmp, r + gap, r + gap, ring);
     }
 
